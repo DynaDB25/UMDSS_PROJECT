@@ -66,8 +66,23 @@ WSGI_APPLICATION = 'UMDSS.wsgi.application'
 
 
 # Database
+# Uses Supabase/Postgres when DATABASE_URL is set (production, e.g. Render),
+# and falls back to local SQLite when it isn't (local dev).
 
-DATABASES = {
+import dj_database_url
+
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=True,  # Supabase requires SSL
+        )
+    }
+else:
+    DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
@@ -96,6 +111,8 @@ USE_TZ = True
 # Static files
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
