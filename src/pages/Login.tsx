@@ -105,7 +105,7 @@ export default function Login() {
         </button>
 
         <p className="mt-8 text-center text-sm text-ink-500">
-          New to USMDSS?{' '}
+          New to ScholarCircle?{' '}
           <Link to="/register" className="font-semibold text-brand-600 hover:text-brand-700">
             Create an account
           </Link>

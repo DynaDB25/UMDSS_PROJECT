@@ -14,8 +14,8 @@ export function Logo({ className, mark = false }: { className?: string; mark?: b
       </div>
       {!mark && (
         <div className="leading-none">
-          <span className="font-display text-lg font-extrabold tracking-tight text-ink-900">
-            USM<span className="text-brand-600">DSS</span>
+          <span className="font-display text-lg font-extrabold tracking-tight text-ink-900 dark:text-white">
+            Scholar<span className="text-brand-600">Circle</span>
           </span>
         </div>
       )}

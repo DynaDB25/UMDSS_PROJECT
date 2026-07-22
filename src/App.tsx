@@ -6,6 +6,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Onboarding from './pages/Onboarding'
 import Dashboard from './pages/Dashboard'
+import Scholarships from './pages/Scholarships'
 import Matches from './pages/Matches'
 import ScholarshipDetail from './pages/ScholarshipDetail'
 import Applications from './pages/Applications'
@@ -33,6 +34,7 @@ export default function App() {
 
       <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
         <Route index element={<Dashboard />} />
+        <Route path="scholarships" element={<Scholarships />} />
         <Route path="matches" element={<Matches />} />
         <Route path="matches/:id" element={<ScholarshipDetail />} />
         <Route path="applications" element={<Applications />} />

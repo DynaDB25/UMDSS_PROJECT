@@ -14,7 +14,11 @@ import {
   LogOut,
   ShieldCheck,
   ChevronDown,
+  Book,
+  Sun,
+  Moon,
 } from 'lucide-react'
+import { useTheme } from '../contexts/ThemeContext'
 import { Logo } from './Logo'
 import { Avatar } from './ui'
 import { STUDENT, notifications } from '../data/mock'
@@ -22,6 +26,7 @@ import { cn } from '../lib/cn'
 
 const nav = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/app/scholarships', label: 'Scholarships', icon: Book },
   { to: '/app/matches', label: 'Scholarship Matches', icon: Sparkles, badge: '6' },
   { to: '/app/applications', label: 'My Applications', icon: ClipboardList, badge: '4' },
   { to: '/app/vault', label: 'Document Vault', icon: FolderLock },
@@ -55,8 +60,8 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               cn(
                 'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
                 isActive
-                  ? 'bg-brand-50 text-brand-700'
-                  : 'text-ink-600 hover:bg-ink-50 hover:text-ink-900',
+                  ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-400'
+                  : 'text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-400 dark:hover:bg-ink-900 dark:hover:text-ink-100',
               )
             }
           >
@@ -126,12 +131,12 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
-  const unread = notifications.filter((n) => !n.read).length
+  const { theme, setTheme } = useTheme()
 
   return (
-    <div className="min-h-screen bg-ink-50">
+    <div className="min-h-screen bg-ink-50 dark:bg-ink-950">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-ink-200/70 bg-white lg:block">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-ink-200/70 bg-white dark:border-ink-800 dark:bg-ink-950 lg:block">
         <SidebarContent />
       </aside>
 
@@ -153,7 +158,7 @@ export function AppLayout() {
 
       <div className="lg:pl-64">
         {/* Topbar */}
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-ink-200/70 bg-white/80 px-4 backdrop-blur-md sm:px-6">
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-ink-200/70 bg-white/80 dark:border-ink-800 dark:bg-ink-950/80 px-4 backdrop-blur-md sm:px-6">
           <button
             className="grid h-9 w-9 place-items-center rounded-lg text-ink-500 hover:bg-ink-100 lg:hidden"
             onClick={() => setMobileOpen(true)}
@@ -165,11 +170,19 @@ export function AppLayout() {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
             <input
               placeholder="Search scholarships, applications, documents…"
-              className="h-10 w-full max-w-md rounded-xl border border-ink-200 bg-ink-50 pl-9 pr-4 text-sm text-ink-700 placeholder:text-ink-400 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+              className="h-10 w-full max-w-md rounded-xl border border-ink-200 bg-ink-50 pl-9 pr-4 text-sm text-ink-700 placeholder:text-ink-400 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-100 dark:focus:border-brand-500"
             />
           </div>
 
           <div className="ml-auto flex items-center gap-1.5">
+            <button
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="grid h-9 w-9 place-items-center rounded-lg text-ink-500 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-ink-800"
+              title="Toggle theme"
+            >
+              {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
+
             <NavLink
               to="/app/notifications"
               className="relative grid h-9 w-9 place-items-center rounded-lg text-ink-500 hover:bg-ink-100"

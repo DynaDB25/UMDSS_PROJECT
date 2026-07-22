@@ -20,7 +20,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
                   <path d="M8.5 13 V19 C8.5 21.7 11.8 23.8 16 23.8 C20.2 23.8 23.5 21.7 23.5 19 V13 L16 16.5 Z" fill="#fff" />
                 </svg>
               </div>
-              <span className="font-display text-lg font-extrabold text-white">USMDSS</span>
+              <span className="font-display text-lg font-extrabold text-white">ScholarCircle</span>
             </div>
           </Link>
         </div>

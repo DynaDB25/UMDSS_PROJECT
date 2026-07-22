@@ -103,7 +103,7 @@ export default function Landing() {
               </span>
             </h1>
             <p className="mt-5 max-w-lg text-lg leading-relaxed text-ink-600">
-              USMDSS is a unified scholarship platform that matches you to awards you
+              ScholarCircle is a unified scholarship platform that matches you to awards you
               qualify for, secures your documents, and sends SMS alerts before deadlines
               close, so no qualified student misses out again.
             </p>
@@ -255,7 +255,7 @@ export default function Landing() {
               and lost a year of funding."
             </blockquote>
             <p className="mt-4 text-brand-200">
-              That experience is the reason USMDSS exists, so that being capable on paper is enough
+              That experience is the reason ScholarCircle exists, so that being capable on paper is enough
               to be reachable in practice.
             </p>
           </div>
@@ -265,7 +265,7 @@ export default function Landing() {
             </h2>
             <p className="mt-4 text-ink-600">
               It is a shortage of access. Information sits scattered across disconnected portals.
-              Deadlines pass unannounced. The same documents are reformatted again and again. USMDSS
+              Deadlines pass unannounced. The same documents are reformatted again and again. ScholarCircle
               acts as an intelligent intermediary layer, aggregating public scholarship data and
               automating the matching and notification that currently fall short.
             </p>
@@ -296,7 +296,7 @@ export default function Landing() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-5 py-10 sm:flex-row">
           <Logo />
           <p className="text-sm text-ink-500">
-            USMDSS · A final-year project · KNUST Computer Science & Engineering · 2026
+            ScholarCircle · A final-year project · KNUST Computer Science & Engineering · 2026
           </p>
           <div className="flex gap-5 text-sm text-ink-500">
             <a href="#modules" className="hover:text-ink-900">Modules</a>
