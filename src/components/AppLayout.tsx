@@ -132,6 +132,7 @@ export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
   const { theme, setTheme } = useTheme()
+  const unread = notifications.filter((n) => !n.read).length
 
   return (
     <div className="min-h-screen bg-ink-50 dark:bg-ink-950">
