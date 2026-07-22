@@ -125,6 +125,7 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://10.138.91.232:3000',
     os.environ.get('FRONTEND_URL', 'http://localhost:3000'),
+    "https://scholarcircle.vercel.app",
 ]
 CORS_ALLOW_CREDENTIALS = True
 
