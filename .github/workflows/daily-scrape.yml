@@ -41,4 +41,9 @@ jobs:
           # No broker is contacted (run_scraper runs synchronously), but keep the
           # eager flag explicit so a missing Redis never trips anything up.
           CELERY_TASK_ALWAYS_EAGER: 'true'
-        run: python manage.py run_scraper
+        run: |
+          # Ensure the scraping sources exist (idempotent). Production only had
+          # the seeded scholarships, not the source list, so run_scraper had
+          # nothing to do until this ran.
+          python manage.py seed_sources
+          python manage.py run_scraper
