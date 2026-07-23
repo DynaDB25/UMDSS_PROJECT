@@ -64,6 +64,10 @@ export default function Settings() {
   const { user, setUser } = useAuth()
   const [tab, setTab] = useState<Tab>('profile')
   const [saving, setSaving] = useState(false)
+  const [savedMsg, setSavedMsg] = useState('')
+  const [pw, setPw] = useState({ current: '', next: '', confirm: '' })
+  const [pwSaving, setPwSaving] = useState(false)
+  const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null)
   // Controlled just for the programme picker (the rest of the form is
   // uncontrolled); the picker submits through a hidden input named "programme".
   const [programme, setProgramme] = useState(user?.profile?.programme ?? '')
@@ -94,8 +98,39 @@ export default function Settings() {
     try {
       const updatedUser = await api.auth.updateMe(payload)
       setUser(updatedUser)
+      setSavedMsg('Changes saved')
+      setTimeout(() => setSavedMsg(''), 2500)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handlePrefsSave = () => {
+    // Notification preferences are UI-only for now; acknowledge without a crash.
+    setSavedMsg('Preferences saved')
+    setTimeout(() => setSavedMsg(''), 2500)
+  }
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPwMsg(null)
+    if (pw.next !== pw.confirm) {
+      setPwMsg({ ok: false, text: 'New passwords do not match.' })
+      return
+    }
+    if (pw.next.length < 8) {
+      setPwMsg({ ok: false, text: 'New password must be at least 8 characters.' })
+      return
+    }
+    setPwSaving(true)
+    try {
+      await api.auth.changePassword({ current_password: pw.current, new_password: pw.next })
+      setPwMsg({ ok: true, text: 'Password updated successfully.' })
+      setPw({ current: '', next: '', confirm: '' })
+    } catch (err: any) {
+      setPwMsg({ ok: false, text: err?.message || 'Could not update password.' })
+    } finally {
+      setPwSaving(false)
     }
   }
 
@@ -327,9 +362,10 @@ export default function Settings() {
                   </div>
                 </div>
                 <div className="flex items-center justify-end gap-3 p-5 sm:p-6">
-                  {saving && <Badge tone="green">Saving...</Badge>}
+                  {savedMsg && <Badge tone="green">{savedMsg}</Badge>}
                   <button
-                    onClick={handleSave}
+                    type="button"
+                    onClick={handlePrefsSave}
                     className="inline-flex items-center gap-2 rounded-xl bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800"
                   >
                     <Save className="h-4 w-4" /> Save changes
@@ -340,42 +376,68 @@ export default function Settings() {
 
             {tab === 'security' && (
               <div className="space-y-6">
-                <Card className="divide-y divide-ink-200/70">
-                  <div className="p-5 sm:p-6">
-                    <h2 className="font-display text-lg font-bold text-ink-900">Password</h2>
-                    <p className="mt-1 text-sm text-ink-500">
-                      Update your password regularly to keep your account secure.
-                    </p>
-                  </div>
-                  <div className="space-y-5 p-5 sm:p-6">
-                    <FieldRow label="Current password">
-                      <div className="relative">
-                        <Key className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-                        <input type="password" className={cn(inputCls, 'pl-9')} placeholder="Enter current password" />
-                      </div>
-                    </FieldRow>
-                    <FieldRow label="New password">
-                      <div className="relative">
-                        <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-                        <input type="password" className={cn(inputCls, 'pl-9')} placeholder="Enter new password" />
-                      </div>
-                    </FieldRow>
-                    <FieldRow label="Confirm password">
-                      <div className="relative">
-                        <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-                        <input type="password" className={cn(inputCls, 'pl-9')} placeholder="Confirm new password" />
-                      </div>
-                    </FieldRow>
-                  </div>
-                  <div className="flex items-center justify-end gap-3 p-5 sm:p-6">
-                    <button
-                      onClick={handleSave}
-                      className="inline-flex items-center gap-2 rounded-xl bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800"
-                    >
-                      <Save className="h-4 w-4" /> Update password
-                    </button>
-                  </div>
-                </Card>
+                <form onSubmit={handleChangePassword}>
+                  <Card className="divide-y divide-ink-200/70">
+                    <div className="p-5 sm:p-6">
+                      <h2 className="font-display text-lg font-bold text-ink-900">Password</h2>
+                      <p className="mt-1 text-sm text-ink-500">
+                        Update your password regularly to keep your account secure.
+                      </p>
+                    </div>
+                    <div className="space-y-5 p-5 sm:p-6">
+                      <FieldRow label="Current password">
+                        <div className="relative">
+                          <Key className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                          <input
+                            type="password"
+                            value={pw.current}
+                            onChange={(e) => setPw((p) => ({ ...p, current: e.target.value }))}
+                            className={cn(inputCls, 'pl-9')}
+                            placeholder="Enter current password"
+                          />
+                        </div>
+                      </FieldRow>
+                      <FieldRow label="New password">
+                        <div className="relative">
+                          <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                          <input
+                            type="password"
+                            value={pw.next}
+                            onChange={(e) => setPw((p) => ({ ...p, next: e.target.value }))}
+                            className={cn(inputCls, 'pl-9')}
+                            placeholder="At least 8 characters"
+                          />
+                        </div>
+                      </FieldRow>
+                      <FieldRow label="Confirm password">
+                        <div className="relative">
+                          <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                          <input
+                            type="password"
+                            value={pw.confirm}
+                            onChange={(e) => setPw((p) => ({ ...p, confirm: e.target.value }))}
+                            className={cn(inputCls, 'pl-9')}
+                            placeholder="Re-enter new password"
+                          />
+                        </div>
+                      </FieldRow>
+                      {pwMsg && (
+                        <p className={cn('text-sm font-medium', pwMsg.ok ? 'text-emerald-600' : 'text-rose-600')}>
+                          {pwMsg.text}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-end gap-3 p-5 sm:p-6">
+                      <button
+                        type="submit"
+                        disabled={pwSaving || !pw.current || !pw.next}
+                        className="inline-flex items-center gap-2 rounded-xl bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:opacity-50"
+                      >
+                        <Save className="h-4 w-4" /> {pwSaving ? 'Updating…' : 'Update password'}
+                      </button>
+                    </div>
+                  </Card>
+                </form>
 
                 <Card className="divide-y divide-ink-200/70">
                   <div className="p-5 sm:p-6">

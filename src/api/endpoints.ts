@@ -7,6 +7,8 @@ export const api = {
     register: (data: any) => client.post('/auth/register/', data),
     me: () => client.get('/auth/me/'),
     updateMe: (data: any) => client.put('/auth/me/', data),
+    changePassword: (data: { current_password: string; new_password: string }) =>
+      client.post('/auth/password/', data),
   },
   scholarships: {
     list: () => client.get('/scholarships/') as Promise<Scholarship[]>,
@@ -22,6 +24,7 @@ export const api = {
   documents: {
     list: () => client.get('/documents/') as Promise<VaultDocument[]>,
     upload: (data: FormData) => client.post('/documents/', data) as Promise<VaultDocument>,
+    remove: (id: string) => client.delete(`/documents/${id}/`) as Promise<null>,
     download: async (id: string, filename: string) => {
       const blob = await client.get(`/documents/${id}/download/`) as Blob;
       const url = window.URL.createObjectURL(blob);

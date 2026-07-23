@@ -14,6 +14,7 @@ urlpatterns = [
     path('auth/register/', views.RegisterView.as_view(), name='register'),
     path('auth/login/', views.LoginView.as_view(), name='login'),
     path('auth/me/', views.MeView.as_view(), name='me'),
+    path('auth/password/', views.ChangePasswordView.as_view(), name='change-password'),
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
 
     # Matches (flat list for the logged-in user)
