@@ -490,31 +490,57 @@ def assistant_chat(request):
 
 class AdminStatsView(APIView):
     """GET /api/admin/stats/ → aggregate stats for the admin dashboard"""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
+        from django.db.models import Sum, Count
+
         total_scholarships = Scholarship.objects.count()
+        verified_scholarships = Scholarship.objects.exclude(origin='curated').count()
         active_applicants = User.objects.filter(applications__isnull=False).distinct().count()
+        registered_users = User.objects.count()
         total_applications = Application.objects.count()
 
         # Sum of scholarship amounts for awarded applications
-        from django.db.models import Sum
         total_awarded = Application.objects.filter(
             status='Awarded'
         ).aggregate(total=Sum('scholarship__amount_value'))['total'] or 0
 
+        # Real breakdowns for the charts (no more mock trend data).
+        status_map = {
+            r['status']: r['c']
+            for r in Application.objects.values('status').annotate(c=Count('id'))
+        }
+        by_status = [
+            {'status': label, 'count': status_map.get(label, 0)}
+            for label, _ in Application.STATUS_CHOICES
+        ]
+        by_region = [
+            {'region': r['region'], 'count': r['c']}
+            for r in (
+                StudentProfile.objects.exclude(region='')
+                .values('region')
+                .annotate(c=Count('id'))
+                .order_by('-c')[:6]
+            )
+        ]
+
         data = {
             'totalScholarships': total_scholarships,
+            'verifiedScholarships': verified_scholarships,
             'activeApplicants': active_applicants,
+            'registeredUsers': registered_users,
             'applicationsThisCycle': total_applications,
             'awardsDisbursed': f'GH₵ {total_awarded / 1_000_000:.1f}M' if total_awarded >= 1_000_000 else f'GH₵ {total_awarded:,}',
+            'byStatus': by_status,
+            'byRegion': by_region,
         }
         return Response(data)
 
 
 class AdminApplicationsView(generics.ListAPIView):
     """GET /api/admin/applications/ → all applications for admin table"""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAdminUser]
     serializer_class = AdminApplicationSerializer
 
     def get_queryset(self):
@@ -537,6 +563,69 @@ class AdminApplicationsView(generics.ListAPIView):
                 'status': app.status,
             })
         return Response(data)
+
+
+class AdminScholarshipCreateView(APIView):
+    """POST /api/admin/scholarships/ → staff add a scholarship by hand."""
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request):
+        from django.utils.text import slugify
+        from django.utils.dateparse import parse_date
+
+        d = request.data
+        name = (d.get('name') or '').strip()
+        provider = (d.get('provider') or '').strip()
+        if not name or not provider:
+            return Response({'detail': 'Name and provider are both required.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Unique slug from the name.
+        base = slugify(name)[:45] or 'scholarship'
+        slug, i = base, 2
+        while Scholarship.objects.filter(slug=slug).exists():
+            slug = f'{base}-{i}'
+            i += 1
+
+        def as_list(v, default):
+            if isinstance(v, list):
+                return v or default
+            if isinstance(v, str) and v.strip():
+                return [x.strip() for x in v.split(',') if x.strip()] or default
+            return default
+
+        def as_int(v, default):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return default
+
+        valid_types = {c[0] for c in Scholarship.PROVIDER_TYPES}
+        valid_scopes = {c[0] for c in Scholarship.LEVEL_SCOPES}
+        provider_type = d.get('provider_type') if d.get('provider_type') in valid_types else 'Foundation'
+        level_scope = d.get('level_scope') if d.get('level_scope') in valid_scopes else 'tertiary_any'
+
+        scholarship = Scholarship.objects.create(
+            slug=slug,
+            name=name,
+            provider=provider,
+            provider_type=provider_type,
+            initials=(''.join(w[0] for w in name.split()[:2]) or name[:2]).upper(),
+            amount=(d.get('amount') or 'Amount varies').strip(),
+            amount_value=as_int(d.get('amount_value'), 0),
+            deadline=parse_date(d.get('deadline')) if d.get('deadline') else None,
+            region=as_list(d.get('region'), ['All']),
+            programmes=as_list(d.get('programmes'), ['All']),
+            max_aggregate=as_int(d.get('max_aggregate'), 36),
+            slots=as_int(d.get('slots'), 0),
+            summary=(d.get('summary') or '').strip(),
+            benefits=as_list(d.get('benefits'), []),
+            documents=as_list(d.get('documents'), []),
+            tags=as_list(d.get('tags'), []),
+            origin='seeded',
+            level_scope=level_scope,
+        )
+        return Response(ScholarshipSerializer(scholarship).data, status=status.HTTP_201_CREATED)
 
 
 # ── Reference data ────────────────────────────────────

@@ -48,5 +48,6 @@ export const api = {
   admin: {
     stats: () => client.get('/admin/stats/'),
     applications: () => client.get('/admin/applications/'),
+    createScholarship: (data: any) => client.post('/admin/scholarships/', data),
   },
 }

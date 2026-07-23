@@ -26,9 +26,10 @@ urlpatterns = [
     # AI assistant (Groq-backed, grounded in the student's data)
     path('assistant/chat/', views.assistant_chat, name='assistant-chat'),
 
-    # Admin
+    # Admin (staff only)
     path('admin/stats/', views.AdminStatsView.as_view(), name='admin-stats'),
     path('admin/applications/', views.AdminApplicationsView.as_view(), name='admin-applications'),
+    path('admin/scholarships/', views.AdminScholarshipCreateView.as_view(), name='admin-scholarship-create'),
 
     # Reference data
     path('reference/', views.reference_data, name='reference'),
