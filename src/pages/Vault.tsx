@@ -29,6 +29,33 @@ const catColors: Record<string, string> = {
   Other: 'bg-ink-100 text-ink-500',
 }
 
+// The API returns each document's size as a human string ("1.2 MB", "512 KB").
+// Parse it back to megabytes so the storage meter reflects real usage.
+const STORAGE_QUOTA_MB = 50
+
+function parseSizeToMb(size?: string): number {
+  if (!size) return 0
+  const m = size.trim().match(/^([\d.]+)\s*(B|KB|MB|GB)?$/i)
+  if (!m) return 0
+  const val = parseFloat(m[1])
+  if (!Number.isFinite(val)) return 0
+  switch ((m[2] || 'MB').toUpperCase()) {
+    case 'B':
+      return val / (1024 * 1024)
+    case 'KB':
+      return val / 1024
+    case 'GB':
+      return val * 1024
+    default:
+      return val
+  }
+}
+
+function formatMb(mb: number): string {
+  if (mb <= 0) return '0 MB'
+  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(mb * 1024))} KB`
+}
+
 export default function Vault() {
   const [documents, setDocuments] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -96,6 +123,9 @@ export default function Vault() {
 
   const verified = documents.filter((d) => d.status === 'Verified').length
 
+  const usedMb = documents.reduce((sum, d) => sum + parseSizeToMb(d.size), 0)
+  const usedPct = Math.min(100, Math.round((usedMb / STORAGE_QUOTA_MB) * 100))
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-1">
@@ -130,12 +160,23 @@ export default function Vault() {
         <Card className="p-5">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-ink-700">Storage used</p>
-            <span className="text-sm text-ink-400">5.0 / 50 MB</span>
+            <span className="text-sm text-ink-400">{formatMb(usedMb)} / {STORAGE_QUOTA_MB} MB</span>
           </div>
           <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-ink-100">
-            <div className="h-full rounded-full bg-brand-600" style={{ width: '10%' }} />
+            <div
+              className={cn('h-full rounded-full transition-all', usedPct >= 90 ? 'bg-rose-500' : 'bg-brand-600')}
+              style={{ width: `${usedMb > 0 ? Math.max(2, usedPct) : 0}%` }}
+            />
           </div>
-          <p className="mt-2 text-xs text-ink-400">Plenty of room for more documents.</p>
+          <p className="mt-2 text-xs text-ink-400">
+            {documents.length === 0
+              ? 'Nothing stored yet.'
+              : usedPct >= 90
+                ? 'Almost full — remove old files to free space.'
+                : usedPct >= 60
+                  ? `${formatMb(STORAGE_QUOTA_MB - usedMb)} left.`
+                  : 'Plenty of room for more documents.'}
+          </p>
         </Card>
       </div>
 
