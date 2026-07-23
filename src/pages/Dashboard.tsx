@@ -180,7 +180,7 @@ export default function Dashboard() {
                   to={`/app/matches/${m.scholarship.id}`}
                   className="group flex items-center gap-4 rounded-xl border border-ink-200/70 p-3.5 transition hover:border-brand-300 hover:bg-brand-50/40"
                 >
-                  <ScholarshipLogo scholarshipId={m.scholarship.id} initials={m.scholarship.initials} color={m.scholarship.logoColor} className="h-12 w-12 rounded-xl text-sm" />
+                  <ScholarshipLogo name={m.scholarship.name} provider={m.scholarship.provider} initials={m.scholarship.initials} color={m.scholarship.logoColor} className="h-12 w-12 rounded-xl text-sm" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="truncate font-semibold text-ink-900">{m.scholarship.name}</p>
@@ -209,7 +209,7 @@ export default function Dashboard() {
             <div className="mt-5 space-y-4">
               {applications.slice(0, 3).map((a: Application) => (
                 <div key={a.id} className="flex items-center gap-4">
-                  <ScholarshipLogo scholarshipId={a.scholarshipId} initials={a.initials} color={a.logoColor} className="h-10 w-10 rounded-xl text-xs" />
+                  <ScholarshipLogo name={a.scholarshipName} provider={a.provider} initials={a.initials} color={a.logoColor} className="h-10 w-10 rounded-xl text-xs" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate text-sm font-semibold text-ink-800">{a.scholarshipName}</p>
