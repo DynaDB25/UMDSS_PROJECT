@@ -81,7 +81,7 @@ export default function ScholarshipDetail() {
             <div className="relative bg-gradient-to-br from-brand-700 to-brand-900 p-6 text-white">
               <div className="absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/5" />
               <div className="relative flex items-start gap-4">
-                <ScholarshipLogo scholarshipId={s.id} initials={s.initials} color={s.logoColor} className="h-16 w-16 rounded-2xl text-lg ring-4 ring-white/20" />
+                <ScholarshipLogo name={s.name} provider={s.provider} initials={s.initials} color={s.logoColor} className="h-16 w-16 rounded-2xl text-lg ring-4 ring-white/20" />
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h1 className="font-display text-2xl font-extrabold">{s.name}</h1>

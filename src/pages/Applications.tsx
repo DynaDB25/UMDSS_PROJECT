@@ -84,7 +84,7 @@ export default function Applications() {
                   onClick={() => setOpen(isOpen ? null : a.id)}
                   className="flex w-full items-center gap-4 p-5 text-left transition hover:bg-ink-50/50"
                 >
-                  <ScholarshipLogo scholarshipId={a.scholarshipId} initials={a.initials} color={a.logoColor} className="h-12 w-12 rounded-xl" />
+                  <ScholarshipLogo name={a.scholarshipName} provider={a.provider} initials={a.initials} color={a.logoColor} className="h-12 w-12 rounded-xl" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-semibold text-ink-900">{a.scholarshipName}</p>

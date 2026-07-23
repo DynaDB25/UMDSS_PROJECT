@@ -182,21 +182,29 @@ class ApiScraper(BaseScraper):
         }
 
     def _scrape_wp(self, session, base_url, cfg):
-        params = {'per_page': cfg.get('per_page', 30), '_fields': 'title,link,date,excerpt,content'}
-        if cfg.get('search'):
-            params['search'] = cfg['search']
-        data = self._get(session, base_url, params=params).json()
-        if not isinstance(data, list):
-            return []
+        # One or more search terms (e.g. ['scholarship', 'ghana']) so we surface
+        # both the general scholarship stream and Ghana-specific listings.
+        searches = cfg.get('searches') or ([cfg['search']] if cfg.get('search') else [None])
         out = []
-        for post in data:
-            title = (post.get('title') or {}).get('rendered', '')
-            if not title:
+        for term in searches:
+            params = {'per_page': cfg.get('per_page', 30), '_fields': 'title,link,date,excerpt,content'}
+            if term:
+                params['search'] = term
+            try:
+                data = self._get(session, base_url, params=params).json()
+            except Exception as e:
+                logger.warning(f"{self.source.name}: search {term!r} failed: {e}")
                 continue
-            excerpt = (post.get('excerpt') or {}).get('rendered', '')
-            content = (post.get('content') or {}).get('rendered', '')
-            extract_text = f"{clean_text(excerpt)} {clean_text(content)}"
-            out.append(self._make(title, post.get('link', ''), excerpt or content, extract_text))
+            if not isinstance(data, list):
+                continue
+            for post in data:
+                title = (post.get('title') or {}).get('rendered', '')
+                if not title:
+                    continue
+                excerpt = (post.get('excerpt') or {}).get('rendered', '')
+                content = (post.get('content') or {}).get('rendered', '')
+                extract_text = f"{clean_text(excerpt)} {clean_text(content)}"
+                out.append(self._make(title, post.get('link', ''), excerpt or content, extract_text))
         return out
 
     def _scrape_rss(self, session, feed_url):

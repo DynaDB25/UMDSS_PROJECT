@@ -99,7 +99,7 @@ export default function Scholarships() {
                 <div className="flex flex-col gap-5 lg:flex-row">
                   {/* Left: identity */}
                   <div className="flex flex-1 gap-4">
-                    <ScholarshipLogo scholarshipId={s.id} initials={s.initials} color={s.logoColor} className="h-14 w-14 rounded-2xl" />
+                    <ScholarshipLogo name={s.name} provider={s.provider} initials={s.initials} color={s.logoColor} className="h-14 w-14 rounded-2xl" />
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <Link
