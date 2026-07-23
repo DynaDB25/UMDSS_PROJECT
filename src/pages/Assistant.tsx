@@ -10,22 +10,29 @@ import {
   ThumbsDown,
   ArrowRight,
   MessageSquareText,
+  FileText,
+  FileType2,
 } from 'lucide-react'
 import { Card, Badge } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../api/endpoints'
+import { downloadPdf, downloadDocx, deriveTitle } from '../lib/exportDoc'
 import { cn } from '../lib/cn'
 import type { ChatMessage } from '../data/types'
+
+// Offer downloads on substantial answers (essays, letters, interview guides),
+// not on short chatty replies.
+const isDownloadable = (text: string) => text.trim().length > 240
 
 const greetingMessage = (name: string): ChatMessage => ({
   id: 'm-1',
   role: 'bot',
-  text: `Hello ${name} 👋  I'm your Scholarship Decision Bot. I know your profile, your matches and your applications, so I can give you advice that actually fits you — comparing awards, checking eligibility, planning deadlines, drafting essays or prepping for interviews. What would you like help with?`,
+  text: `Hello ${name} 👋  I'm your Scholarship Decision Bot. I know your profile, your matches and your applications, so my advice actually fits you. I can compare awards, check eligibility, plan your deadlines, write your essays and personal statements (download them as PDF or Word), and run full interview prep. What would you like to start with?`,
   quickReplies: [
     'Which scholarships should I prioritise?',
-    'Am I eligible for my top match?',
+    'Write my personal statement',
+    'Prep me for an interview',
     'Plan my upcoming deadlines',
-    'Draft a personal statement outline',
   ],
 })
 
@@ -124,6 +131,24 @@ export default function Assistant() {
     requestReply(next)
   }
 
+  const savePdf = (text: string) => {
+    try {
+      downloadPdf(deriveTitle(text), text)
+    } catch (e) {
+      console.error(e)
+      alert('Sorry, I could not create the PDF. Please try again.')
+    }
+  }
+
+  const saveWord = async (text: string) => {
+    try {
+      await downloadDocx(deriveTitle(text), text)
+    } catch (e) {
+      console.error(e)
+      alert('Sorry, I could not create the Word file. Please try again.')
+    }
+  }
+
   // Re-ask from the last user message (drops the previous bot answer).
   const regenerate = () => {
     if (isTyping) return
@@ -207,6 +232,27 @@ export default function Assistant() {
                           >
                             <RefreshCcw className="h-3.5 w-3.5" />
                           </button>
+                        )}
+
+                        {/* Download document-length answers as PDF or Word */}
+                        {isDownloadable(m.text) && (
+                          <div className="ml-auto flex items-center gap-1">
+                            <span className="text-[10px] font-medium text-ink-400">Save as</span>
+                            <button
+                              onClick={() => savePdf(m.text)}
+                              title="Download as PDF"
+                              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-ink-500 hover:bg-ink-100 hover:text-rose-600"
+                            >
+                              <FileText className="h-3.5 w-3.5" /> PDF
+                            </button>
+                            <button
+                              onClick={() => saveWord(m.text)}
+                              title="Download as Word"
+                              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-ink-500 hover:bg-ink-100 hover:text-sky-600"
+                            >
+                              <FileType2 className="h-3.5 w-3.5" /> Word
+                            </button>
+                          </div>
                         )}
                       </div>
                     )}
