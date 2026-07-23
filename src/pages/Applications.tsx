@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ClipboardList, CheckCircle2, Circle, Calendar, ChevronRight } from 'lucide-react'
 import { api } from '../api/endpoints'
@@ -139,18 +140,18 @@ export default function Applications() {
                             </div>
                             <p className="mt-1 text-sm text-violet-700">Thu 03 Jul 2026 · 10:00 AM</p>
                             <p className="text-xs text-violet-600">MTN House, Ridge, Accra</p>
-                            <button className="mt-3 w-full rounded-lg bg-violet-700 py-2 text-xs font-semibold text-white">
+                            <Link to="/app/assistant" className="mt-3 block w-full rounded-lg bg-violet-700 py-2 text-center text-xs font-semibold text-white hover:bg-violet-800">
                               Prepare with the bot
-                            </button>
+                            </Link>
                           </div>
                         )}
                         <div className="rounded-xl bg-white p-4 ring-1 ring-ink-200">
                           <p className="text-xs text-ink-400">Submitted on</p>
                           <p className="text-sm font-semibold text-ink-800">{a.submittedOn}</p>
                         </div>
-                        <button className="w-full rounded-xl border border-ink-200 bg-white py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50">
-                          {a.status === 'Draft' ? 'Continue application' : 'View submitted application'}
-                        </button>
+                        <Link to={`/app/matches/${a.scholarshipId}`} className="block w-full rounded-xl border border-ink-200 bg-white py-2.5 text-center text-sm font-semibold text-ink-700 hover:bg-ink-50">
+                          {a.status === 'Draft' ? 'Continue application' : 'View scholarship'}
+                        </Link>
                       </div>
                     </div>
                   </motion.div>
@@ -159,6 +160,32 @@ export default function Applications() {
             </motion.div>
           )
         })}
+
+        {filtered.length === 0 && (
+          <Card className="p-12 text-center">
+            <ClipboardList className="mx-auto h-10 w-10 text-ink-300" />
+            {applications.length === 0 ? (
+              <>
+                <p className="mt-3 font-semibold text-ink-700">No applications yet</p>
+                <p className="mx-auto mt-1 max-w-sm text-sm text-ink-500">
+                  When you apply to a scholarship it shows up here so you can track it end to end —
+                  from submission through to the final decision.
+                </p>
+                <Link
+                  to="/app/matches"
+                  className="mt-4 inline-block rounded-xl bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-800"
+                >
+                  Browse your matches
+                </Link>
+              </>
+            ) : (
+              <>
+                <p className="mt-3 font-semibold text-ink-700">Nothing under “{tab}”</p>
+                <p className="text-sm text-ink-500">You have no applications with this status yet.</p>
+              </>
+            )}
+          </Card>
+        )}
       </div>
     </div>
   )

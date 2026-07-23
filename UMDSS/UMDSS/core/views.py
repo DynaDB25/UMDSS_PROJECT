@@ -82,6 +82,24 @@ class MeView(generics.RetrieveUpdateAPIView):
         regenerate_matches_for_user(self.request.user)
 
 
+class ChangePasswordView(APIView):
+    """POST /api/auth/password/  → change the logged-in user's password."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        current = request.data.get('current_password', '')
+        new = request.data.get('new_password', '')
+        if not request.user.check_password(current):
+            return Response({'detail': 'Your current password is incorrect.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if len(new) < 8:
+            return Response({'detail': 'New password must be at least 8 characters.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        request.user.set_password(new)
+        request.user.save()
+        return Response({'detail': 'Password updated successfully.'})
+
+
 # ── Scholarships ──────────────────────────────────────
 
 class ScholarshipViewSet(viewsets.ReadOnlyModelViewSet):
@@ -115,10 +133,48 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             student=self.request.user
         ).select_related('scholarship')
 
-    def perform_create(self, serializer):
-        scholarship_slug = self.request.data.get('scholarship_id')
-        scholarship = Scholarship.objects.get(slug=scholarship_slug)
-        serializer.save(student=self.request.user, scholarship=scholarship)
+    def create(self, request, *args, **kwargs):
+        import datetime
+        slug = request.data.get('scholarship_id')
+        if not slug:
+            return Response({'detail': 'scholarship_id is required.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            scholarship = Scholarship.objects.get(slug=slug)
+        except Scholarship.DoesNotExist:
+            return Response({'detail': 'That scholarship no longer exists.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # Applying twice is a no-op: return the existing application instead of
+        # erroring, so the UI can just route the student to their tracker.
+        existing = Application.objects.filter(
+            student=request.user, scholarship=scholarship).first()
+        if existing:
+            return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
+
+        today = datetime.date.today().strftime('%b %d, %Y')
+        app = Application.objects.create(
+            student=request.user,
+            scholarship=scholarship,
+            status='Submitted',
+            submitted_on=today,
+            progress=25,
+            timeline=[
+                {'label': 'Application started', 'date': today, 'done': True},
+                {'label': 'Submitted', 'date': today, 'done': True},
+                {'label': 'Under review', 'date': 'Pending', 'done': False},
+                {'label': 'Decision', 'date': 'Pending', 'done': False},
+            ],
+        )
+        Notification.objects.create(
+            student=request.user,
+            channel='System',
+            category='Status',
+            title=f'Application submitted: {scholarship.name}',
+            body=f'Your application to {scholarship.provider} has been received and is now with the review team.',
+            time='Just now',
+        )
+        return Response(self.get_serializer(app).data, status=status.HTTP_201_CREATED)
 
 
 # ── Vault Documents ───────────────────────────────────

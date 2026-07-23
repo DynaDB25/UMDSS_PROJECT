@@ -12,22 +12,21 @@ import {
   MessageSquareText,
 } from 'lucide-react'
 import { Card, Badge } from '../components/ui'
+import { useAuth } from '../contexts/AuthContext'
 import { cn } from '../lib/cn'
 import type { ChatMessage } from '../data/types'
 
-const initialMessages: ChatMessage[] = [
-  {
-    id: 'm-1',
-    role: 'bot',
-    text: "Hello Benjamin 👋  I'm your Scholarship Decision Bot. I can help you compare awards, draft essays, prepare for interviews, or answer eligibility questions. What would you like help with today?",
-    quickReplies: [
-      'Compare MTN vs GETFund',
-      'Help me write an essay',
-      'Prepare for my MTN interview',
-      'Which scholarships can I still apply for?',
-    ],
-  },
-]
+const greetingMessage = (name: string): ChatMessage => ({
+  id: 'm-1',
+  role: 'bot',
+  text: `Hello ${name} 👋  I'm your Scholarship Decision Bot. I can help you compare awards, draft essays, prepare for interviews, or answer eligibility questions. What would you like help with today?`,
+  quickReplies: [
+    'Compare MTN vs GETFund',
+    'Help me write an essay',
+    'Prepare for my MTN interview',
+    'Which scholarships can I still apply for?',
+  ],
+})
 
 const botResponses: Record<string, string> = {
   'Compare MTN vs GETFund':
@@ -48,7 +47,9 @@ const tips = [
 ]
 
 export default function Assistant() {
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
+  const { user } = useAuth()
+  const firstName = user?.first_name || 'there'
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [greetingMessage(firstName)])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -56,6 +57,15 @@ export default function Assistant() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isTyping])
+
+  // The auth user loads asynchronously; once we know their name, personalise the
+  // opening greeting — but only while the conversation is still untouched, so we
+  // never clobber an in-progress chat.
+  useEffect(() => {
+    setMessages((prev) =>
+      prev.length === 1 && prev[0].id === 'm-1' ? [greetingMessage(firstName)] : prev,
+    )
+  }, [firstName])
 
   const sendMessage = (text: string) => {
     if (!text.trim()) return

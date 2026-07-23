@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { api } from '../api/endpoints'
-import type { MatchResult, VaultDocument } from '../data/types'
+import type { Scholarship, MatchResult, VaultDocument } from '../data/types'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -26,44 +26,81 @@ import { cn } from '../lib/cn'
 export default function ScholarshipDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  
+
+  const [s, setS] = useState<Scholarship | null>(null)
   const [match, setMatch] = useState<MatchResult | null>(null)
   const [documents, setDocuments] = useState<VaultDocument[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [applying, setApplying] = useState(false)
   const [applied, setApplied] = useState(false)
+  const [applyError, setApplyError] = useState('')
 
   useEffect(() => {
-    Promise.all([
-      api.matches.list(),
-      api.documents.list(),
-    ]).then(([mList, dList]) => {
-      const found = mList.find((m) => m.scholarship.id === id) || mList[0]
-      setMatch(found)
-      setDocuments(dList)
-    }).finally(() => setLoading(false))
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      try {
+        // Fetch the scholarship directly by id — the detail page must work for
+        // ANY scholarship, not only ones the student already has a match for.
+        const [scholarship, matches, docs, apps] = await Promise.all([
+          api.scholarships.get(id!),
+          api.matches.list().catch(() => [] as MatchResult[]),
+          api.documents.list().catch(() => [] as VaultDocument[]),
+          api.applications.list().catch(() => [] as any[]),
+        ])
+        if (cancelled) return
+        setS(scholarship)
+        setMatch(matches.find((m) => m.scholarship.id === id) || null)
+        setDocuments(docs)
+        setApplied(apps.some((a) => a.scholarshipId === id))
+      } catch {
+        if (!cancelled) setLoadError('We couldn’t load this scholarship. It may have closed or been removed.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
   }, [id])
 
-  if (loading || !match) return <div>Loading...</div>
+  if (loading) return <div className="p-8 text-center text-ink-500">Loading scholarship…</div>
+  if (loadError || !s)
+    return (
+      <div className="mx-auto max-w-md p-10 text-center">
+        <AlertTriangle className="mx-auto h-10 w-10 text-amber-500" />
+        <p className="mt-3 font-semibold text-ink-800">{loadError || 'Scholarship not found'}</p>
+        <button onClick={() => navigate(-1)} className="mt-4 text-sm font-semibold text-brand-600">
+          ← Go back
+        </button>
+      </div>
+    )
 
-  const s = match.scholarship
   const d = daysUntil(s.deadline)
-  
+
   const handleApply = async () => {
     setApplying(true)
+    setApplyError('')
     try {
       await api.applications.create(s.id)
-      navigate('/app/applications')
+      setApplied(true)
+    } catch (err: any) {
+      setApplyError(err?.message || 'Could not submit your application. Please try again.')
     } finally {
       setApplying(false)
     }
   }
 
-  // map required docs to vault docs
   const haveDoc = (name: string) =>
-    documents.some((doc) => doc.status === 'Verified' && name.toLowerCase().includes(doc.name.split('(')[0].trim().toLowerCase().split(' ')[0]))
+    documents.some(
+      (doc) =>
+        doc.status === 'Verified' &&
+        name.toLowerCase().includes(doc.name.split('(')[0].trim().toLowerCase().split(' ')[0]),
+    )
 
-  const metCount = match.criteria.filter((c) => c.met).length
+  const metCount = match ? match.criteria.filter((c) => c.met).length : 0
 
   return (
     <div className="space-y-6">
@@ -71,7 +108,7 @@ export default function ScholarshipDetail() {
         onClick={() => navigate(-1)}
         className="inline-flex items-center gap-2 text-sm font-medium text-ink-500 hover:text-ink-800"
       >
-        <ArrowLeft className="h-4 w-4" /> Back to matches
+        <ArrowLeft className="h-4 w-4" /> Back
       </button>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -85,7 +122,7 @@ export default function ScholarshipDetail() {
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h1 className="font-display text-2xl font-extrabold">{s.name}</h1>
-                    <StatusPill status={match.status} />
+                    {match && <StatusPill status={match.status} />}
                   </div>
                   <p className="mt-1 inline-flex items-center gap-1.5 text-brand-100">
                     <Building2 className="h-4 w-4" /> {s.provider}
@@ -129,66 +166,93 @@ export default function ScholarshipDetail() {
 
             <div className="p-6">
               <h2 className="font-display text-lg font-bold text-ink-900">About this scholarship</h2>
-              <p className="mt-2 leading-relaxed text-ink-600">{s.summary}</p>
+              <p className="mt-2 leading-relaxed text-ink-600">{s.summary || 'No description was provided for this scholarship. Use the “View original listing” link to read the full details on the provider’s site.'}</p>
 
-              <h3 className="mt-6 font-semibold text-ink-900">What you get</h3>
-              <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
-                {s.benefits.map((b) => (
-                  <div key={b} className="flex items-start gap-2.5 rounded-xl bg-ink-50 p-3">
-                    <Gift className="mt-0.5 h-4.5 w-4.5 shrink-0 text-brand-600" />
-                    <span className="text-sm text-ink-700">{b}</span>
+              {s.benefits.length > 0 && (
+                <>
+                  <h3 className="mt-6 font-semibold text-ink-900">What you get</h3>
+                  <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+                    {s.benefits.map((b) => (
+                      <div key={b} className="flex items-start gap-2.5 rounded-xl bg-ink-50 p-3">
+                        <Gift className="mt-0.5 h-4.5 w-4.5 shrink-0 text-brand-600" />
+                        <span className="text-sm text-ink-700">{b}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </Card>
+
+          {/* Eligibility breakdown — only when we actually have a match */}
+          {match ? (
+            <Card className="p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display text-lg font-bold text-ink-900">Why you match</h2>
+                <span className="text-sm font-medium text-ink-500">
+                  {metCount} of {match.criteria.length} criteria met
+                </span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {match.criteria.map((c) => (
+                  <div
+                    key={c.label}
+                    className={cn(
+                      'flex items-start gap-3 rounded-xl border p-4',
+                      c.met ? 'border-emerald-100 bg-emerald-50/50' : 'border-amber-100 bg-amber-50/50',
+                    )}
+                  >
+                    {c.met ? (
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" />
+                    ) : (
+                      <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+                    )}
+                    <div>
+                      <p className="text-sm font-semibold text-ink-800">{c.label}</p>
+                      <p className="text-sm text-ink-500">{c.detail}</p>
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
-          </Card>
-
-          {/* Eligibility breakdown */}
-          <Card className="p-6">
-            <div className="flex items-center justify-between">
-              <h2 className="font-display text-lg font-bold text-ink-900">Why you match</h2>
-              <span className="text-sm font-medium text-ink-500">
-                {metCount} of {match.criteria.length} criteria met
-              </span>
-            </div>
-            <div className="mt-4 space-y-3">
-              {match.criteria.map((c) => (
-                <div
-                  key={c.label}
-                  className={cn(
-                    'flex items-start gap-3 rounded-xl border p-4',
-                    c.met ? 'border-emerald-100 bg-emerald-50/50' : 'border-amber-100 bg-amber-50/50',
-                  )}
-                >
-                  {c.met ? (
-                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" />
-                  ) : (
-                    <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
-                  )}
-                  <div>
-                    <p className="text-sm font-semibold text-ink-800">{c.label}</p>
-                    <p className="text-sm text-ink-500">{c.detail}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 flex items-center gap-2 rounded-xl bg-brand-50 p-3 text-sm text-brand-800">
-              <ShieldCheck className="h-4.5 w-4.5 shrink-0" />
-              Eligibility is rule-based and transparent. If you do not qualify, you always see exactly why.
-            </div>
-          </Card>
+              <div className="mt-4 flex items-center gap-2 rounded-xl bg-brand-50 p-3 text-sm text-brand-800">
+                <ShieldCheck className="h-4.5 w-4.5 shrink-0" />
+                Eligibility is rule-based and transparent. If you do not qualify, you always see exactly why.
+              </div>
+            </Card>
+          ) : (
+            <Card className="p-6">
+              <h2 className="font-display text-lg font-bold text-ink-900">Check your eligibility</h2>
+              <p className="mt-2 text-sm text-ink-500">
+                Complete your academic profile and we’ll score you against this scholarship’s criteria
+                and tell you exactly where you stand.
+              </p>
+              <Link
+                to="/app/settings"
+                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-800"
+              >
+                Complete my profile
+              </Link>
+            </Card>
+          )}
         </div>
 
         {/* Sidebar: apply */}
         <div className="space-y-6">
           <Card className="p-6 lg:sticky lg:top-24">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-ink-500">Match score</p>
-                <p className="font-display text-xl font-bold text-ink-900">{match.status}</p>
+            {match ? (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-ink-500">Match score</p>
+                  <p className="font-display text-xl font-bold text-ink-900">{match.status}</p>
+                </div>
+                <ScoreRing score={match.score} size={64} />
               </div>
-              <ScoreRing score={match.score} size={64} />
-            </div>
+            ) : (
+              <div>
+                <p className="text-sm text-ink-500">Award</p>
+                <p className="font-display text-xl font-bold text-ink-900">{s.amount}</p>
+              </div>
+            )}
 
             <div className="mt-4">
               <div className="flex items-center justify-between text-sm">
@@ -203,32 +267,34 @@ export default function ScholarshipDetail() {
             </div>
 
             {/* Required docs */}
-            <div className="mt-6">
-              <h3 className="text-sm font-semibold text-ink-900">Required documents</h3>
-              <div className="mt-3 space-y-2">
-                {s.documents.map((doc) => {
-                  const have = haveDoc(doc)
-                  return (
-                    <div key={doc} className="flex items-center gap-2.5 text-sm">
-                      <div
-                        className={cn(
-                          'grid h-6 w-6 shrink-0 place-items-center rounded-md',
-                          have ? 'bg-emerald-100 text-emerald-600' : 'bg-ink-100 text-ink-400',
-                        )}
-                      >
-                        <FileCheck className="h-3.5 w-3.5" />
+            {s.documents.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-sm font-semibold text-ink-900">Required documents</h3>
+                <div className="mt-3 space-y-2">
+                  {s.documents.map((doc) => {
+                    const have = haveDoc(doc)
+                    return (
+                      <div key={doc} className="flex items-center gap-2.5 text-sm">
+                        <div
+                          className={cn(
+                            'grid h-6 w-6 shrink-0 place-items-center rounded-md',
+                            have ? 'bg-emerald-100 text-emerald-600' : 'bg-ink-100 text-ink-400',
+                          )}
+                        >
+                          <FileCheck className="h-3.5 w-3.5" />
+                        </div>
+                        <span className={cn('flex-1', have ? 'text-ink-700' : 'text-ink-500')}>{doc}</span>
+                        {have ? <Badge tone="green">In vault</Badge> : <Badge tone="ink">Needed</Badge>}
                       </div>
-                      <span className={cn('flex-1', have ? 'text-ink-700' : 'text-ink-500')}>{doc}</span>
-                      {have ? (
-                        <Badge tone="green">In vault</Badge>
-                      ) : (
-                        <Badge tone="ink">Needed</Badge>
-                      )}
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
               </div>
-            </div>
+            )}
+
+            {applyError && (
+              <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{applyError}</p>
+            )}
 
             {applied ? (
               <motion.div
@@ -238,19 +304,19 @@ export default function ScholarshipDetail() {
               >
                 <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
                 <p className="mt-2 font-semibold text-emerald-800">Application submitted</p>
-                <p className="text-sm text-emerald-600">Documents attached from your vault. You will get an SMS confirmation.</p>
+                <p className="text-sm text-emerald-600">It’s now in your tracker and the review team has been notified.</p>
                 <Link to="/app/applications" className="mt-3 inline-block text-sm font-semibold text-brand-600">
                   Track application →
                 </Link>
               </motion.div>
             ) : (
-                <button
-                  onClick={handleApply}
-                  disabled={applying}
-                  className="w-full rounded-xl bg-brand-600 py-3.5 font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
-                >
-                  {applying ? 'Submitting...' : 'Apply now'}
-                </button>
+              <button
+                onClick={handleApply}
+                disabled={applying}
+                className="mt-6 w-full rounded-xl bg-brand-600 py-3.5 font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
+              >
+                {applying ? 'Submitting…' : 'Apply now'}
+              </button>
             )}
             {s.sourceUrl && (
               <a

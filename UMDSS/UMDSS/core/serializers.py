@@ -108,13 +108,16 @@ class MatchResultSerializer(serializers.ModelSerializer):
 
 
 class ApplicationSerializer(serializers.ModelSerializer):
-    id = serializers.CharField(source='pk')
-    scholarship_id = serializers.SlugField(source='scholarship.slug')
-    scholarship_name = serializers.CharField(source='scholarship.name')
-    provider = serializers.CharField(source='scholarship.provider')
-    initials = serializers.CharField(source='scholarship.initials')
-    logo_color = serializers.CharField(source='scholarship.logo_color')
-    amount = serializers.CharField(source='scholarship.amount')
+    # All of these are derived from the linked scholarship or set server-side,
+    # so they are read-only. The client only sends scholarship_id (handled in
+    # the view), and marking these writable made POST fail validation.
+    id = serializers.CharField(source='pk', read_only=True)
+    scholarship_id = serializers.SlugField(source='scholarship.slug', read_only=True)
+    scholarship_name = serializers.CharField(source='scholarship.name', read_only=True)
+    provider = serializers.CharField(source='scholarship.provider', read_only=True)
+    initials = serializers.CharField(source='scholarship.initials', read_only=True)
+    logo_color = serializers.CharField(source='scholarship.logo_color', read_only=True)
+    amount = serializers.CharField(source='scholarship.amount', read_only=True)
 
     class Meta:
         model = Application
@@ -123,6 +126,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
             'initials', 'logo_color', 'status', 'submitted_on',
             'last_update', 'progress', 'amount', 'timeline',
         ]
+        read_only_fields = ['status', 'submitted_on', 'last_update', 'progress', 'timeline']
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

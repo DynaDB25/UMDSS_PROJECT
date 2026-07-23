@@ -8,12 +8,13 @@ import {
   FileText,
   MoreVertical,
   Download,
-  Link2,
+  Trash2,
   Lock,
   Search,
   CheckCircle2,
   Clock,
   AlertTriangle,
+  Link2,
 } from 'lucide-react'
 import { Card, StatusPill, Badge } from '../components/ui'
 import { cn } from '../lib/cn'
@@ -35,6 +36,8 @@ export default function Vault() {
   const [query, setQuery] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const fetchDocuments = () => {
     api.documents.list().then(setDocuments).finally(() => setLoading(false))
@@ -43,6 +46,23 @@ export default function Vault() {
   useEffect(() => {
     fetchDocuments()
   }, [])
+
+  const rawId = (id: string) => id.replace('doc-', '')
+
+  const handleDelete = async (doc: any) => {
+    if (!window.confirm(`Permanently delete “${doc.name}”? This can’t be undone.`)) return
+    setMenuFor(null)
+    setDeletingId(doc.id)
+    try {
+      await api.documents.remove(rawId(doc.id))
+      setDocuments((prev) => prev.filter((d) => d.id !== doc.id))
+    } catch (err) {
+      console.error('Delete failed:', err)
+      alert('Could not delete this document. Please try again.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
   
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return
@@ -184,15 +204,53 @@ export default function Vault() {
                 <div className={cn('grid h-11 w-11 place-items-center rounded-xl', catColors[doc.category])}>
                   <FileText className="h-5 w-5" />
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="relative flex items-center gap-1">
                   {doc.encrypted && (
                     <span className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-50 text-emerald-600" title="Encrypted">
                       <Lock className="h-3.5 w-3.5" />
                     </span>
                   )}
-                  <button className="grid h-7 w-7 place-items-center rounded-lg text-ink-400 opacity-0 transition group-hover:opacity-100 hover:bg-ink-100">
+                  <button
+                    onClick={() => setMenuFor(menuFor === doc.id ? null : doc.id)}
+                    aria-haspopup="menu"
+                    aria-expanded={menuFor === doc.id}
+                    className={cn(
+                      'grid h-7 w-7 place-items-center rounded-lg text-ink-400 transition hover:bg-ink-100',
+                      menuFor === doc.id ? 'bg-ink-100 opacity-100' : 'opacity-0 group-hover:opacity-100',
+                    )}
+                  >
                     <MoreVertical className="h-4 w-4" />
                   </button>
+                  {menuFor === doc.id && (
+                    <>
+                      {/* click-away backdrop */}
+                      <div className="fixed inset-0 z-10" onClick={() => setMenuFor(null)} />
+                      <div
+                        role="menu"
+                        className="absolute right-0 top-8 z-20 w-40 overflow-hidden rounded-xl border border-ink-200 bg-white py-1 shadow-lg shadow-ink-900/10"
+                      >
+                        {doc.status !== 'Action needed' && (
+                          <button
+                            role="menuitem"
+                            onClick={() => {
+                              setMenuFor(null)
+                              api.documents.download(rawId(doc.id), doc.name)
+                            }}
+                            className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm text-ink-600 hover:bg-ink-50"
+                          >
+                            <Download className="h-4 w-4" /> Download
+                          </button>
+                        )}
+                        <button
+                          role="menuitem"
+                          onClick={() => handleDelete(doc)}
+                          className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+                        >
+                          <Trash2 className="h-4 w-4" /> Delete
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -222,29 +280,52 @@ export default function Vault() {
 
               <div className="mt-4 flex gap-2">
                 {doc.status === 'Action needed' ? (
-                  <button 
+                  <button
                     onClick={() => fileInputRef.current?.click()}
                     className="flex-1 rounded-lg bg-brand-700 py-2 text-xs font-semibold text-white hover:bg-brand-800"
                   >
                     Upload now
                   </button>
                 ) : (
-                  <>
-                    <button 
-                      onClick={() => api.documents.download(doc.id.replace('doc-', ''), doc.name)}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-ink-200 py-2 text-xs font-semibold text-ink-600 hover:bg-ink-50"
-                    >
-                      <Download className="h-3.5 w-3.5" /> Download
-                    </button>
-                    <button className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-ink-200 py-2 text-xs font-semibold text-ink-600 hover:bg-ink-50">
-                      <Link2 className="h-3.5 w-3.5" /> Attach
-                    </button>
-                  </>
+                  <button
+                    onClick={() => api.documents.download(rawId(doc.id), doc.name)}
+                    disabled={deletingId === doc.id}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-ink-200 py-2 text-xs font-semibold text-ink-600 hover:bg-ink-50 disabled:opacity-50"
+                  >
+                    <Download className="h-3.5 w-3.5" /> {deletingId === doc.id ? 'Deleting…' : 'Download'}
+                  </button>
                 )}
               </div>
             </Card>
           </motion.div>
         ))}
+
+        {filtered.length === 0 && (
+          <Card className="p-12 text-center sm:col-span-2 lg:col-span-3">
+            {documents.length === 0 ? (
+              <>
+                <UploadCloud className="mx-auto h-10 w-10 text-ink-300" />
+                <p className="mt-3 font-semibold text-ink-700">Your vault is empty</p>
+                <p className="mx-auto mt-1 max-w-sm text-sm text-ink-500">
+                  Upload your Ghana Card, WASSCE slip or admission letter once and reuse it across
+                  every application.
+                </p>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="mt-4 rounded-xl bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-800"
+                >
+                  Upload your first document
+                </button>
+              </>
+            ) : (
+              <>
+                <Search className="mx-auto h-10 w-10 text-ink-300" />
+                <p className="mt-3 font-semibold text-ink-700">No documents match</p>
+                <p className="text-sm text-ink-500">Try a different category or clear your search.</p>
+              </>
+            )}
+          </Card>
+        )}
       </div>
     </div>
   )
