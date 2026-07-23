@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -19,16 +19,17 @@ import {
   Moon,
 } from 'lucide-react'
 import { useTheme } from '../contexts/ThemeContext'
+import { useAuth } from '../contexts/AuthContext'
+import { api } from '../api/endpoints'
 import { Logo } from './Logo'
 import { Avatar } from './ui'
-import { STUDENT, notifications } from '../data/mock'
 import { cn } from '../lib/cn'
 
 const nav = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/app/scholarships', label: 'Scholarships', icon: Book },
-  { to: '/app/matches', label: 'Scholarship Matches', icon: Sparkles, badge: '6' },
-  { to: '/app/applications', label: 'My Applications', icon: ClipboardList, badge: '4' },
+  { to: '/app/matches', label: 'Scholarship Matches', icon: Sparkles },
+  { to: '/app/applications', label: 'My Applications', icon: ClipboardList },
   { to: '/app/vault', label: 'Document Vault', icon: FolderLock },
   { to: '/app/notifications', label: 'Notifications', icon: Bell },
   { to: '/app/assistant', label: 'Decision Bot', icon: Bot },
@@ -39,7 +40,13 @@ const secondary = [
   { to: '/admin', label: 'Admin Console', icon: ShieldCheck },
 ]
 
-function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
+function SidebarContent({
+  onNavigate,
+  badges = {},
+}: {
+  onNavigate?: () => void
+  badges?: Record<string, number>
+}) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-16 items-center px-6">
@@ -65,24 +72,27 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               )
             }
           >
-            {({ isActive }) => (
-              <>
-                <item.icon
-                  className={cn('h-[18px] w-[18px]', isActive ? 'text-brand-600' : 'text-ink-400 group-hover:text-ink-600')}
-                />
-                <span className="flex-1">{item.label}</span>
-                {item.badge && (
-                  <span
-                    className={cn(
-                      'rounded-full px-2 py-0.5 text-[11px] font-semibold',
-                      isActive ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500',
-                    )}
-                  >
-                    {item.badge}
-                  </span>
-                )}
-              </>
-            )}
+            {({ isActive }) => {
+              const badge = badges[item.to]
+              return (
+                <>
+                  <item.icon
+                    className={cn('h-[18px] w-[18px]', isActive ? 'text-brand-600' : 'text-ink-400 group-hover:text-ink-600')}
+                  />
+                  <span className="flex-1">{item.label}</span>
+                  {badge ? (
+                    <span
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                        isActive ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500',
+                      )}
+                    >
+                      {badge}
+                    </span>
+                  ) : null}
+                </>
+              )
+            }}
           </NavLink>
         ))}
 
@@ -132,13 +142,47 @@ export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
   const { theme, setTheme } = useTheme()
-  const unread = notifications.filter((n) => !n.read).length
+  const { user } = useAuth()
+  const [counts, setCounts] = useState({ matches: 0, applications: 0, unread: 0 })
+
+  // Sidebar/topbar counts reflect the logged-in user's real data, refreshed on
+  // navigation so applying or reading notifications updates them.
+  useEffect(() => {
+    let active = true
+    Promise.all([
+      api.matches.list().catch(() => []),
+      api.applications.list().catch(() => []),
+      api.notifications.list().catch(() => []),
+    ]).then(([m, a, n]) => {
+      if (!active) return
+      setCounts({
+        matches: (m as any[]).filter((x) => x.status !== 'Not eligible').length,
+        applications: (a as any[]).length,
+        unread: (n as any[]).filter((x) => !x.read).length,
+      })
+    })
+    return () => {
+      active = false
+    }
+  }, [location.pathname])
+
+  const badges: Record<string, number> = {
+    '/app/matches': counts.matches,
+    '/app/applications': counts.applications,
+  }
+  const unread = counts.unread
+
+  const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'Your account'
+  const initials =
+    ((user?.first_name?.[0] || '') + (user?.last_name?.[0] || '')).toUpperCase() ||
+    (user?.email?.[0] || 'U').toUpperCase()
+  const subLabel = user?.profile?.student_id || user?.email || ''
 
   return (
     <div className="min-h-screen bg-ink-50 dark:bg-ink-950">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-ink-200/70 bg-white dark:border-ink-800 dark:bg-ink-950 lg:block">
-        <SidebarContent />
+        <SidebarContent badges={badges} />
       </aside>
 
       {/* Mobile sidebar */}
@@ -152,7 +196,7 @@ export function AppLayout() {
             >
               <X className="h-5 w-5" />
             </button>
-            <SidebarContent onNavigate={() => setMobileOpen(false)} />
+            <SidebarContent badges={badges} onNavigate={() => setMobileOpen(false)} />
           </aside>
         </div>
       )}
@@ -198,14 +242,17 @@ export function AppLayout() {
 
             <div className="mx-1 hidden h-6 w-px bg-ink-200 sm:block" />
 
-            <button className="flex items-center gap-2.5 rounded-xl py-1.5 pl-1.5 pr-2 hover:bg-ink-50">
-              <Avatar initials="BD" className="h-8 w-8 text-xs" />
+            <NavLink
+              to="/app/settings"
+              className="flex items-center gap-2.5 rounded-xl py-1.5 pl-1.5 pr-2 hover:bg-ink-50"
+            >
+              <Avatar initials={initials} className="h-8 w-8 text-xs" />
               <div className="hidden text-left leading-tight sm:block">
-                <p className="text-sm font-semibold text-ink-800">{STUDENT.firstName} Darko</p>
-                <p className="text-[11px] text-ink-400">{STUDENT.studentId}</p>
+                <p className="text-sm font-semibold text-ink-800">{fullName}</p>
+                {subLabel && <p className="text-[11px] text-ink-400">{subLabel}</p>}
               </div>
               <ChevronDown className="hidden h-4 w-4 text-ink-400 sm:block" />
-            </button>
+            </NavLink>
 
             <NavLink
               to="/login"
