@@ -33,4 +33,11 @@ build/
 
 # Project specific
 .claude
-UMDSS
+
+# Python / Django backend (the backend source under UMDSS/ IS tracked and
+# deployed to Render — do NOT ignore the whole folder, only its generated junk)
+__pycache__/
+*.py[cod]
+UMDSS/UMDSS/media/
+UMDSS/UMDSS/db.sqlite3.bak-*
+UMDSS/UMDSS/staticfiles/
