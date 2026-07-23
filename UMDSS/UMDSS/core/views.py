@@ -277,6 +277,172 @@ def mark_all_read(request):
     return Response({'detail': 'All notifications marked as read.'})
 
 
+# ── AI Assistant (Groq) ───────────────────────────────
+
+import logging
+
+GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
+
+# Groq's flagship open-weight reasoning model (Kimi K2 and Llama 4 Scout were
+# deprecated in favour of this in 2026). Overridable so we can swap models
+# without a code change.
+DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b'
+
+ASSISTANT_SYSTEM = (
+    "You are the ScholarCircle Decision Bot, an expert and friendly adviser who helps "
+    "Ghanaian students find, win and manage scholarships. You compare awards, check "
+    "eligibility, plan deadlines, draft and sharpen essays/personal statements, and run "
+    "interview prep.\n\n"
+    "Rules:\n"
+    "- Ground every answer in the STUDENT DATA below. Never invent scholarships, amounts, "
+    "deadlines or eligibility rules that are not in that data. If something isn't there, say "
+    "so plainly and point the student to the Scholarships or Matches page.\n"
+    "- Money is in Ghana Cedis (GH₵); use Ghanaian/UK date style.\n"
+    "- Listings flagged UNVERIFIED may be out of date — always tell the student to confirm "
+    "those details on the provider's official website before relying on them.\n"
+    "- Be concise and skimmable: short paragraphs, bullet points, and bold the key facts. "
+    "Finish with a clear next step when it helps.\n"
+    "- You are not a lawyer or a licensed financial adviser; for legal or financial specifics, "
+    "tell the student to confirm with the provider or a qualified professional.\n"
+)
+
+
+def _assistant_context(user):
+    """Build a grounding block from the student's real profile, matches and
+    applications so the model advises on actual data instead of guessing."""
+    lines = []
+    name = user.get_full_name() or user.first_name or 'the student'
+    lines.append(f"Name: {name} <{user.email}>")
+
+    profile = getattr(user, 'profile', None)
+    if profile:
+        bits = []
+        if profile.student_type:
+            bits.append(f"type={profile.student_type}")
+        if profile.programme:
+            bits.append(f"programme={profile.programme}")
+        if profile.institution:
+            bits.append(f"institution={profile.institution}")
+        if profile.shs_school:
+            bits.append(f"SHS={profile.shs_school}")
+        level = profile.university_level or profile.shs_level or profile.level
+        if level:
+            bits.append(f"level={level}")
+        if profile.region:
+            bits.append(f"region={profile.region}")
+        if profile.home_district:
+            bits.append(f"district={profile.home_district}")
+        if profile.wassce_aggregate is not None:
+            bits.append(f"WASSCE aggregate={profile.wassce_aggregate} ({profile.wassce_status or 'status n/a'})")
+        if profile.academic_standing:
+            bits.append(f"standing={profile.academic_standing}")
+        if profile.need_level:
+            bits.append(f"financial need={profile.need_level}")
+        lines.append("Profile: " + (", ".join(bits) if bits else "started but mostly empty"))
+    else:
+        lines.append("Profile: not completed — encourage finishing onboarding for accurate matching.")
+
+    matches = list(
+        MatchResult.objects.filter(student=user)
+        .select_related('scholarship')
+        .order_by('-score')[:15]
+    )
+    if matches:
+        lines.append("\nMatches from our rule-based engine (use these; do not invent others):")
+        for m in matches:
+            s = m.scholarship
+            deadline = s.deadline.strftime('%d %b %Y') if s.deadline else 'no stated deadline'
+            unmet = [c.get('label') for c in (m.criteria or []) if not c.get('met')]
+            gap = f"; not yet met: {', '.join(unmet)}" if unmet else ""
+            flag = " [UNVERIFIED]" if s.origin == 'curated' else ""
+            lines.append(
+                f"- {s.name} ({s.provider}) — {s.amount}; {m.status} {m.score}%; "
+                f"deadline {deadline}{flag}{gap}"
+            )
+    else:
+        lines.append("\nMatches: none computed yet.")
+
+    apps = list(Application.objects.filter(student=user).select_related('scholarship'))
+    if apps:
+        lines.append("\nApplications in progress:")
+        for a in apps:
+            lines.append(f"- {a.scholarship.name}: {a.status} ({a.progress}% complete)")
+    else:
+        lines.append("\nApplications: none started yet.")
+
+    return "\n".join(lines)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def assistant_chat(request):
+    """POST /api/assistant/chat/ → a grounded LLM reply via Groq.
+
+    Body: {"messages": [{"role": "user"|"assistant", "content": str}, ...]}
+    The API key stays server-side (GROQ_API_KEY env); the client never sees it.
+    """
+    import requests as http
+
+    api_key = os.environ.get('GROQ_API_KEY')
+    if not api_key:
+        return Response(
+            {'detail': "The assistant isn't switched on yet — the server needs a GROQ_API_KEY."},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    raw = request.data.get('messages', [])
+    if not isinstance(raw, list) or not raw:
+        return Response({'detail': 'messages must be a non-empty list.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    # Keep only well-formed, recent turns to bound token usage.
+    history = []
+    for m in raw[-20:]:
+        if not isinstance(m, dict):
+            continue
+        role = m.get('role')
+        content = (m.get('content') or '').strip()
+        if role in ('user', 'assistant') and content:
+            history.append({'role': role, 'content': content[:4000]})
+
+    if not history or history[-1]['role'] != 'user':
+        return Response({'detail': 'The last message must come from the user.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    system = ASSISTANT_SYSTEM + "\n\nSTUDENT DATA:\n" + _assistant_context(request.user)
+    payload = {
+        'model': os.environ.get('GROQ_MODEL', DEFAULT_GROQ_MODEL),
+        'messages': [{'role': 'system', 'content': system}] + history,
+        'temperature': 0.6,
+        'max_tokens': 2048,
+    }
+
+    try:
+        resp = http.post(
+            GROQ_URL,
+            headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+            json=payload,
+            timeout=60,
+        )
+    except http.RequestException:
+        return Response({'detail': 'The assistant is unreachable right now. Please try again.'},
+                        status=status.HTTP_502_BAD_GATEWAY)
+
+    if resp.status_code != 200:
+        # Log safely (Windows consoles are cp1252 — avoid unicode crashes) and
+        # surface a friendly message rather than leaking provider internals.
+        safe = resp.text[:500].encode('ascii', 'replace').decode('ascii')
+        logging.getLogger('core').error('Groq error %s: %s', resp.status_code, safe)
+        return Response({'detail': 'The assistant had trouble responding. Please try again in a moment.'},
+                        status=status.HTTP_502_BAD_GATEWAY)
+
+    data = resp.json()
+    reply = (data.get('choices', [{}])[0].get('message', {}).get('content') or '').strip()
+    if not reply:
+        reply = "I'm not sure how to answer that yet — could you give me a little more detail?"
+    return Response({'reply': reply})
+
+
 # ── Admin ─────────────────────────────────────────────
 
 class AdminStatsView(APIView):
