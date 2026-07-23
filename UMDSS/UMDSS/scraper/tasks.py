@@ -6,6 +6,7 @@ from .models import ScrapingSource
 from .scrapers.selenium_scraper import SeleniumScraper
 from .scrapers.playwright_scraper import PlaywrightScraper
 from .scrapers.generic_scraper import GenericScraper
+from .scrapers.api_scraper import ApiScraper
 from core.models import Scholarship
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,8 @@ def get_scraper_class(scraper_type):
         return SeleniumScraper
     elif scraper_type == 'playwright':
         return PlaywrightScraper
+    elif scraper_type == 'api':
+        return ApiScraper
     return GenericScraper
 
 @shared_task(

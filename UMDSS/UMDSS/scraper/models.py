@@ -4,8 +4,13 @@ class ScrapingSource(models.Model):
     name = models.CharField(max_length=200)
     url = models.URLField()
     scraper_type = models.CharField(
-        max_length=50, 
-        choices=[('selenium', 'Selenium'), ('playwright', 'Playwright'), ('generic', 'Generic')]
+        max_length=50,
+        choices=[
+            ('api', 'API / RSS (WordPress REST or feed)'),
+            ('generic', 'Generic (HTML)'),
+            ('selenium', 'Selenium'),
+            ('playwright', 'Playwright'),
+        ],
     )
     provider_type = models.CharField(max_length=20, default='Foundation')
     is_active = models.BooleanField(default=True)

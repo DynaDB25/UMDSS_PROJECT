@@ -30,7 +30,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--source', type=str, help='Scrape one source by (partial) name')
-        parser.add_argument('--type', type=str, choices=['selenium', 'playwright', 'generic'],
+        parser.add_argument('--type', type=str, choices=['api', 'generic', 'selenium', 'playwright'],
                             help='Scrape every active source of this type')
         parser.add_argument('--all', action='store_true',
                             help='Include browser-based (selenium/playwright) sources')
