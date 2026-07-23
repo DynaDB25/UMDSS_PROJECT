@@ -23,6 +23,9 @@ urlpatterns = [
     # Notifications bulk action
     path('notifications/mark-all-read/', views.mark_all_read, name='mark-all-read'),
 
+    # AI assistant (Groq-backed, grounded in the student's data)
+    path('assistant/chat/', views.assistant_chat, name='assistant-chat'),
+
     # Admin
     path('admin/stats/', views.AdminStatsView.as_view(), name='admin-stats'),
     path('admin/applications/', views.AdminApplicationsView.as_view(), name='admin-applications'),

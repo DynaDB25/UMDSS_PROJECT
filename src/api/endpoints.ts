@@ -41,6 +41,10 @@ export const api = {
     list: () => client.get('/notifications/') as Promise<AppNotification[]>,
     markAllRead: () => client.post('/notifications/mark-all-read/', {}),
   },
+  assistant: {
+    chat: (messages: { role: 'user' | 'assistant'; content: string }[]) =>
+      client.post('/assistant/chat/', { messages }) as Promise<{ reply: string }>,
+  },
   admin: {
     stats: () => client.get('/admin/stats/'),
     applications: () => client.get('/admin/applications/'),
