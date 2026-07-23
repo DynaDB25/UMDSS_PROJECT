@@ -1,0 +1,44 @@
+name: Daily scholarship scrape
+
+# Free alternative to a paid Render Cron Job. Runs the lightweight scrapers
+# once a day against the live sites and writes fresh scholarships straight to
+# the production (Supabase) database. Needs one repository secret: DATABASE_URL
+# (copy it from Render → your web service → Environment).
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # 06:00 UTC every day
+  workflow_dispatch: {}     # lets you run it on demand from the Actions tab
+
+concurrency:
+  group: daily-scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: UMDSS/UMDSS
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run scrapers
+        working-directory: UMDSS/UMDSS
+        env:
+          # Points Django at the live Supabase Postgres instead of local sqlite.
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # No broker is contacted (run_scraper runs synchronously), but keep the
+          # eager flag explicit so a missing Redis never trips anything up.
+          CELERY_TASK_ALWAYS_EAGER: 'true'
+        run: python manage.py run_scraper
