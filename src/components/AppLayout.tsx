@@ -43,10 +43,13 @@ const secondary = [
 function SidebarContent({
   onNavigate,
   badges = {},
+  isStaff = false,
 }: {
   onNavigate?: () => void
   badges?: Record<string, number>
+  isStaff?: boolean
 }) {
+  const secondaryNav = secondary.filter((item) => item.to !== '/admin' || isStaff)
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-16 items-center px-6">
@@ -99,7 +102,7 @@ function SidebarContent({
         <p className="px-3 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
           More
         </p>
-        {secondary.map((item) => (
+        {secondaryNav.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -182,7 +185,7 @@ export function AppLayout() {
     <div className="min-h-screen bg-ink-50 dark:bg-ink-950">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-ink-200/70 bg-white dark:border-ink-800 dark:bg-ink-950 lg:block">
-        <SidebarContent badges={badges} />
+        <SidebarContent badges={badges} isStaff={!!user?.is_staff} />
       </aside>
 
       {/* Mobile sidebar */}
@@ -196,7 +199,7 @@ export function AppLayout() {
             >
               <X className="h-5 w-5" />
             </button>
-            <SidebarContent badges={badges} onNavigate={() => setMobileOpen(false)} />
+            <SidebarContent badges={badges} isStaff={!!user?.is_staff} onNavigate={() => setMobileOpen(false)} />
           </aside>
         </div>
       )}

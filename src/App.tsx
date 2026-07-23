@@ -23,6 +23,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return <div>Loading...</div>
+  if (!user) return <Navigate to="/login" replace />
+  // Non-staff users have no business on the admin console — send them home.
+  if (!user.is_staff) return <Navigate to="/app" replace />
+  return <>{children}</>
+}
+
 export default function App() {
   return (
     <Routes>
@@ -30,7 +39,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/onboarding" element={<Onboarding />} />
-      <Route path="/admin" element={<Admin />} />
+      <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
 
       <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
         <Route index element={<Dashboard />} />

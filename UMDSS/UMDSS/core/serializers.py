@@ -40,7 +40,10 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'first_name', 'last_name', 'email', 'profile']
+        # is_staff is read-only so the frontend can gate the admin console, but
+        # a client can never grant itself staff by PUTting it back.
+        fields = ['id', 'first_name', 'last_name', 'email', 'is_staff', 'profile']
+        read_only_fields = ['is_staff']
 
     def update(self, instance, validated_data):
         profile_data = validated_data.pop('profile', {})
