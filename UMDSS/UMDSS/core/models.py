@@ -242,6 +242,33 @@ class VaultDocument(models.Model):
         return self.name
 
 
+class SuggestedApplicationLink(models.Model):
+    """Where a student says they actually found the application form.
+
+    The crawler cannot reach everything, but a student who gets to a funder's
+    site has the real link in front of them. One tap saves it for everyone
+    behind them. No admin sits in the middle: a link is promoted to the
+    scholarship once two different students independently report the same one,
+    so a single bad paste can never misdirect anybody.
+    """
+    CONFIRMATIONS_NEEDED = 2
+
+    scholarship = models.ForeignKey(
+        Scholarship, on_delete=models.CASCADE, related_name='suggested_links')
+    student = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='suggested_links')
+    url = models.URLField(max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        # One vote per student per scholarship, so nobody can confirm their own
+        # suggestion by submitting it twice.
+        unique_together = ('scholarship', 'student')
+
+    def __str__(self):
+        return f"{self.student} → {self.scholarship.name}: {self.url}"
+
+
 class Notification(models.Model):
     CHANNEL_CHOICES = [('SMS', 'SMS'), ('Email', 'Email'), ('System', 'System')]
     CATEGORY_CHOICES = [

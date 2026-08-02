@@ -61,6 +61,9 @@ export default function ScholarshipDetail() {
   const [marking, setMarking] = useState(false)
   const [zipping, setZipping] = useState(false)
   const [findingForm, setFindingForm] = useState(false)
+  const [suggestUrl, setSuggestUrl] = useState('')
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggestMsg, setSuggestMsg] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -163,6 +166,29 @@ export default function ScholarshipDetail() {
       setApplyError(err?.message || 'Could not build the document bundle.')
     } finally {
       setZipping(false)
+    }
+  }
+
+  const handleSuggestForm = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!suggestUrl.trim()) return
+    setSuggesting(true)
+    setSuggestMsg('')
+    try {
+      const r = await api.scholarships.suggestForm(s.id, suggestUrl.trim())
+      if (r.promoted && r.applicationUrl) {
+        setS((prev) => (prev ? { ...prev, applicationUrl: r.applicationUrl } : prev))
+        setSuggestMsg('Confirmed. This link is now live for every student.')
+      } else {
+        setSuggestMsg(
+          `Thank you. ${r.votes} of ${r.needed} students have reported this link, so it goes live once one more agrees.`,
+        )
+      }
+      setSuggestUrl('')
+    } catch (err: any) {
+      setSuggestMsg(err?.message || 'Could not save that link.')
+    } finally {
+      setSuggesting(false)
     }
   }
 
@@ -636,6 +662,36 @@ export default function ScholarshipDetail() {
                     >
                       {marking ? 'Saving…' : 'I have submitted this'}
                     </button>
+
+                    {/* Nothing found automatically. The student on the funder's
+                        site can see the real link, so let them pass it on. */}
+                    {!findingForm && !applyRoute.externalUrl && !applyRoute.email && (
+                      <form onSubmit={handleSuggestForm} className="rounded-xl border border-ink-200 bg-ink-50 p-3">
+                        <p className="text-xs font-semibold text-ink-700">
+                          Found where to apply?
+                        </p>
+                        <p className="mt-0.5 text-xs text-ink-500">
+                          We could not find {s.provider}&apos;s form. Paste the link and we will
+                          save it for every student after you.
+                        </p>
+                        <div className="mt-2 flex gap-2">
+                          <input
+                            value={suggestUrl}
+                            onChange={(e) => setSuggestUrl(e.target.value)}
+                            placeholder="https://…"
+                            className="h-9 min-w-0 flex-1 rounded-lg border border-ink-200 bg-white px-2.5 text-xs text-ink-800 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                          />
+                          <button
+                            type="submit"
+                            disabled={suggesting || !suggestUrl.trim()}
+                            className="shrink-0 rounded-lg bg-brand-700 px-3 text-xs font-semibold text-white hover:bg-brand-800 disabled:opacity-50"
+                          >
+                            {suggesting ? 'Saving…' : 'Share'}
+                          </button>
+                        </div>
+                        {suggestMsg && <p className="mt-2 text-xs font-medium text-brand-700">{suggestMsg}</p>}
+                      </form>
+                    )}
                   </>
                 ) : (
                   <div className="rounded-xl bg-emerald-50 p-4 text-center">

@@ -158,6 +158,70 @@ class ScholarshipViewSet(viewsets.ReadOnlyModelViewSet):
             'searched': True,
         })
 
+    @action(detail=True, methods=['post'], url_path='suggest-form',
+            permission_classes=[permissions.IsAuthenticated])
+    def suggest_form(self, request, slug=None):
+        """POST /scholarships/{slug}/suggest-form/ → a student reports where the
+        application actually lives.
+
+        The crawler cannot reach every funder, but a student standing on the
+        provider's site can. Two independent students reporting the same link
+        promotes it for everyone, so no single submission can misdirect people
+        and nobody has to curate it by hand.
+        """
+        from django.core.exceptions import ValidationError
+        from django.core.validators import URLValidator
+
+        from .form_finder import _is_safe_url
+        from .models import SuggestedApplicationLink
+
+        s = self.get_object()
+        url = (request.data.get('url') or '').strip()
+
+        if not url.lower().startswith(('http://', 'https://')):
+            url = 'https://' + url
+
+        # URLValidator rejects the malformed input that a bare SSRF check waves
+        # through (an unresolvable host is "safe" but still is not a link).
+        try:
+            URLValidator(schemes=['http', 'https'])(url)
+        except ValidationError:
+            return Response({'detail': 'That does not look like a valid web link.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if len(url) > 500 or not _is_safe_url(url):
+            return Response({'detail': 'That does not look like a valid public web link.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        SuggestedApplicationLink.objects.update_or_create(
+            scholarship=s, student=request.user, defaults={'url': url},
+        )
+
+        # Compare ignoring the trailing slash so the same page reported two
+        # slightly different ways still counts as agreement.
+        def norm(u):
+            return u.rstrip('/').lower()
+
+        votes = sum(
+            1 for link in SuggestedApplicationLink.objects.filter(scholarship=s)
+            if norm(link.url) == norm(url)
+        )
+
+        promoted = False
+        if votes >= SuggestedApplicationLink.CONFIRMATIONS_NEEDED and not s.application_url:
+            s.application_url = url
+            s.application_mode = 'online'
+            s.save(update_fields=['application_url', 'application_mode'])
+            promoted = True
+
+        return Response({
+            'accepted': True,
+            'votes': votes,
+            'needed': SuggestedApplicationLink.CONFIRMATIONS_NEEDED,
+            'promoted': promoted,
+            'applicationUrl': s.application_url,
+        })
+
 
 # ── Matches ───────────────────────────────────────────
 

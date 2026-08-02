@@ -13,6 +13,16 @@ export const api = {
   scholarships: {
     list: () => client.get('/scholarships/') as Promise<Scholarship[]>,
     get: (id: string) => client.get(`/scholarships/${id}/`) as Promise<Scholarship>,
+    // A student reports where the application actually lives. Two independent
+    // reports of the same link promote it for everyone.
+    suggestForm: (id: string, url: string) =>
+      client.post(`/scholarships/${id}/suggest-form/`, { url }) as Promise<{
+        accepted: boolean
+        votes: number
+        needed: number
+        promoted: boolean
+        applicationUrl: string
+      }>,
     // Ask the server to go and find this scholarship's real application form.
     findForm: (id: string) =>
       client.post(`/scholarships/${id}/find-form/`, {}) as Promise<{
