@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { api } from '../api/endpoints'
+import { api, type FormCandidate } from '../api/endpoints'
 import type { Scholarship, MatchResult, VaultDocument } from '../data/types'
 import {
   ArrowLeft,
@@ -46,6 +46,9 @@ export default function ScholarshipDetail() {
   const [marking, setMarking] = useState(false)
   const [zipping, setZipping] = useState(false)
   const [findingForm, setFindingForm] = useState(false)
+  // Ranked places the crawler thinks the application lives, shown when none
+  // was confident enough to select automatically.
+  const [candidates, setCandidates] = useState<FormCandidate[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -77,6 +80,7 @@ export default function ScholarshipDetail() {
             .findForm(id!)
             .then((found) => {
               if (cancelled) return
+              setCandidates(found.candidates || [])
               if (found.applicationUrl || found.applicationEmail) {
                 setS((prev) =>
                   prev
@@ -450,6 +454,7 @@ export default function ScholarshipDetail() {
             requirements={requirements}
             applyRoute={applyRoute}
             emailHref={emailHref}
+            candidates={candidates}
             applyError={applyError}
             applying={applying}
             marking={marking}

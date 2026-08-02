@@ -11,9 +11,10 @@ import type { MatchResult, Scholarship } from '../../data/types'
 import type { ApplyRoute } from '../../lib/applyForm'
 import { daysUntil } from '../../data/mock'
 import { cn } from '../../lib/cn'
+import type { FormCandidate } from '../../api/endpoints'
 import { Alert, Button, Card, ExternalButtonLink, Progress, ScoreRing } from '../ui'
 import { RequirementsChecklist, type Requirement } from './RequirementsChecklist'
-import { SuggestFormCard } from './SuggestFormCard'
+import { WhereToApply } from './WhereToApply'
 
 export function ApplyPanel({
   scholarship: s,
@@ -22,6 +23,7 @@ export function ApplyPanel({
   requirements,
   applyRoute,
   emailHref,
+  candidates,
   applyError,
   applying,
   marking,
@@ -39,6 +41,7 @@ export function ApplyPanel({
   requirements: Requirement[]
   applyRoute: ApplyRoute
   emailHref: string
+  candidates: FormCandidate[]
   applyError: string
   applying: boolean
   marking: boolean
@@ -186,10 +189,13 @@ export function ApplyPanel({
               </Button>
 
               {!findingForm && !applyRoute.externalUrl && !applyRoute.email && (
-                <SuggestFormCard
+                <WhereToApply
                   scholarshipId={s.id}
+                  name={s.name}
                   provider={s.provider}
-                  onPromoted={onFormPromoted}
+                  sourceUrl={s.sourceUrl}
+                  candidates={candidates}
+                  onConfirmed={onFormPromoted}
                 />
               )}
             </>
@@ -225,6 +231,19 @@ export function ApplyPanel({
               >
                 View original listing
               </ExternalButtonLink>
+            )}
+
+            {/* Nothing certain found, so surface the shortlist before they
+                commit rather than after. */}
+            {!findingForm && !applyRoute.externalUrl && !applyRoute.email && (
+              <WhereToApply
+                scholarshipId={s.id}
+                name={s.name}
+                provider={s.provider}
+                sourceUrl={s.sourceUrl}
+                candidates={candidates}
+                onConfirmed={onFormPromoted}
+              />
             )}
           </>
         )}

@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight, ArrowUpRight } from 'lucide-react'
 import { Logo } from '../components/Logo'
-import { FunderMarquee } from '../components/marketing/FunderMarquee'
 import { DeadlineBoard } from '../components/marketing/DeadlineBoard'
+import { useOpenAwards } from '../components/marketing/useOpenAwards'
 import { ButtonLink } from '../components/ui'
+import { daysUntil, formatDeadline } from '../data/mock'
+import { cn } from '../lib/cn'
 import { fadeUp, inView, listItem, stagger } from '../lib/motion'
 
 const modules = [
@@ -97,6 +99,66 @@ function SiteHeader() {
   )
 }
 
+/**
+ * The three awards closing soonest, read live from the public catalogue. This
+ * sits where a marketing page normally puts a mocked-up screenshot, on the
+ * argument that a real record is more persuasive than a drawing of one.
+ */
+function ClosingSoon() {
+  const { awards, live } = useOpenAwards()
+
+  return (
+    <div className="rounded-md border border-rule bg-surface">
+      <div className="flex items-center justify-between gap-3 border-b border-rule px-4 py-3">
+        <p className="t-overline text-ink-muted">Closing soonest</p>
+        {live && (
+          <span className="t-overline flex items-center gap-1.5 text-ink-faint">
+            <span className="h-1.5 w-1.5 rounded-full bg-state-positive" aria-hidden />
+            Live
+          </span>
+        )}
+      </div>
+
+      <ul className="rule-list">
+        {awards.slice(0, 3).map((s) => {
+          const d = daysUntil(s.deadline)
+          const known = Number.isFinite(d)
+          return (
+            <li key={s.id} className="px-4 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-display text-[0.9375rem] font-bold leading-snug tracking-tight text-ink">
+                    {s.name}
+                  </p>
+                  <p className="t-xs mt-1 truncate text-ink-muted">{s.provider}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p
+                    className={cn(
+                      'tabular font-display text-lg font-extrabold leading-none tracking-tight',
+                      known && d <= 14 ? 'text-accent' : 'text-ink',
+                    )}
+                  >
+                    {known ? d : '--'}
+                  </p>
+                  <p className="t-xs mt-1 text-ink-muted">{known ? 'days' : 'rolling'}</p>
+                </div>
+              </div>
+              <p className="tabular t-xs mt-2 text-ink-faint">
+                Closes {s.deadline ? formatDeadline(s.deadline) : 'when filled'}
+              </p>
+            </li>
+          )
+        })}
+      </ul>
+
+      <p className="t-xs border-t border-rule px-4 py-3 text-ink-muted">
+        Create a profile to see which of these you qualify for, and why.
+      </p>
+    </div>
+  )
+}
+
 /* ------------------------------------------------------------------ */
 
 export default function Landing() {
@@ -168,32 +230,30 @@ export default function Landing() {
               </motion.div>
             </div>
 
-            {/* Coverage column, set as a reference table rather than badges */}
-            <motion.div
+            {/* Real records, not an invented product screenshot */}
+            <motion.aside
               variants={fadeUp}
               className="lg:col-span-5 lg:border-l lg:border-rule lg:pl-16"
             >
-              <p className="t-overline border-b border-rule pb-3 text-ink-muted">Coverage</p>
-              <dl className="rule-list">
-                {coverage.map(([value, label]) => (
-                  <div key={label} className="flex items-baseline justify-between gap-6 py-5">
-                    <dt className="t-body text-ink-secondary">{label}</dt>
-                    <dd className="tabular font-display text-3xl font-extrabold tracking-[-0.03em] text-ink">
-                      {value}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-              <p className="t-sm mt-5 text-ink-muted">
-                Government, corporate, foundation and international awards, refreshed daily by an
-                automated scraper.
-              </p>
-            </motion.div>
+              <ClosingSoon />
+            </motion.aside>
           </motion.div>
         </div>
       </section>
 
-      <FunderMarquee />
+      {/* Coverage, as a thin reference strip rather than a section of its own */}
+      <div className="border-b border-rule bg-surface-sunken">
+        <dl className="mx-auto grid max-w-[1400px] grid-cols-2 divide-rule px-4 sm:grid-cols-4 sm:divide-x sm:px-8">
+          {[...coverage, ['Daily', 'catalogue refresh'] as const].map(([value, label]) => (
+            <div key={label} className="py-5 sm:px-6 sm:first:pl-0 sm:last:pr-0">
+              <dd className="tabular font-display text-2xl font-extrabold tracking-[-0.03em] text-ink">
+                {value}
+              </dd>
+              <dt className="t-xs mt-1 text-ink-muted">{label}</dt>
+            </div>
+          ))}
+        </dl>
+      </div>
 
       {/* ---------------- Live board ---------------- */}
       <div id="board" className="scroll-mt-16">

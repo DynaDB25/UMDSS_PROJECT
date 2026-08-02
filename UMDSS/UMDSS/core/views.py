@@ -130,31 +130,41 @@ class ScholarshipViewSet(viewsets.ReadOnlyModelViewSet):
                 'applicationUrl': s.application_url,
                 'applicationEmail': s.application_email,
                 'applicationMode': s.application_mode,
+                'candidates': s.application_candidates or [],
                 'searched': False,
             })
 
         if s.application_checked_at and timezone.now() - s.application_checked_at < _dt.timedelta(
             days=self.RECHECK_AFTER_DAYS
         ):
+            # The crawl already ran and found nothing certain, but the shortlist
+            # it produced is still the best help we can give.
             return Response({
                 'applicationUrl': '', 'applicationEmail': '',
-                'applicationMode': s.application_mode, 'searched': False,
+                'applicationMode': s.application_mode,
+                'candidates': s.application_candidates or [],
+                'searched': False,
             })
 
-        found = discover_application_form(s.source_url)
+        found = discover_application_form(
+            s.source_url, name=s.name, provider=s.provider,
+        )
         s.application_url = (found['url'] or '')[:500]
         s.application_email = (found['email'] or '')[:254]
         if found['url'] or found['email']:
             s.application_mode = found['mode']
+        s.application_candidates = found.get('candidates') or []
         s.application_checked_at = timezone.now()
         s.save(update_fields=[
-            'application_url', 'application_email', 'application_mode', 'application_checked_at',
+            'application_url', 'application_email', 'application_mode',
+            'application_candidates', 'application_checked_at',
         ])
 
         return Response({
             'applicationUrl': s.application_url,
             'applicationEmail': s.application_email,
             'applicationMode': s.application_mode,
+            'candidates': s.application_candidates,
             'searched': True,
         })
 

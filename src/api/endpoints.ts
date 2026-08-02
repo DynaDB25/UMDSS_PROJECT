@@ -6,6 +6,17 @@ export type ChatTurn = { role: 'user' | 'assistant'; content: string }
 /** `interview` swaps the assistant into a strict one-question-at-a-time panel. */
 export type AssistantOpts = { mode?: 'chat' | 'interview'; scholarship?: string }
 
+/** One place the crawler thinks a scholarship's application might live. */
+export type FormCandidate = {
+  url: string
+  host: string
+  /** 0-100 confidence. Anything at or above 70 is auto-selected server-side. */
+  score: number
+  reason: string
+  kind: 'form' | 'portal' | 'document' | 'page'
+  embeddable: boolean
+}
+
 export const api = {
   auth: {
     login: (credentials: any) => client.post('/auth/login/', credentials),
@@ -29,11 +40,14 @@ export const api = {
         applicationUrl: string
       }>,
     // Ask the server to go and find this scholarship's real application form.
+    // `candidates` is the ranked shortlist, returned even when nothing scored
+    // high enough to auto-select, so the UI can offer real choices.
     findForm: (id: string) =>
       client.post(`/scholarships/${id}/find-form/`, {}) as Promise<{
         applicationUrl: string
         applicationEmail: string
         applicationMode: string
+        candidates: FormCandidate[]
         searched: boolean
       }>,
   },

@@ -153,6 +153,13 @@ class Scholarship(models.Model):
     # When we last crawled the provider's page looking for the form. Lets a
     # fruitless search back off instead of re-crawling on every page view.
     application_checked_at = models.DateTimeField(null=True, blank=True)
+    # Ranked places the crawler thinks the application might live, kept even
+    # when none scored high enough to auto-select. Without this a student on the
+    # cached path would see nothing at all for a week.
+    application_candidates = models.JSONField(
+        default=list, blank=True,
+        help_text='Ranked application candidates: [{url, score, reason, kind, host, embeddable}].',
+    )
     slots = models.IntegerField(default=0)
     applicants = models.IntegerField(default=0)
     summary = models.TextField(blank=True)
