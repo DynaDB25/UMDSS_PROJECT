@@ -306,13 +306,45 @@ def regenerate_matches_for_user(user):
         return None
 
     scholarships = list(Scholarship.objects.all())
+
+    # This runs inside the profile save, so it has to be a handful of queries
+    # rather than a handful per scholarship. update_or_create in a loop cost
+    # four round trips per award, which on a hosted Postgres meant the request
+    # outlived the proxy timeout once the catalogue grew and the browser just
+    # reported "Failed to fetch". compute_match is pure, so everything is
+    # decided in memory and written in bulk.
+    existing = {m.scholarship_id: m for m in MatchResult.objects.filter(student=user)}
+
+    to_create = []
+    to_update = []
+    seen = set()
+
     for s in scholarships:
-        MatchResult.objects.update_or_create(
-            student=user, scholarship=s, defaults=compute_match(profile, s),
+        seen.add(s.id)
+        result = compute_match(profile, s)
+        current = existing.get(s.id)
+        if current is None:
+            to_create.append(MatchResult(student=user, scholarship=s, **result))
+        elif (
+            current.score != result['score']
+            or current.status != result['status']
+            or current.criteria != result['criteria']
+        ):
+            current.score = result['score']
+            current.status = result['status']
+            current.criteria = result['criteria']
+            to_update.append(current)
+
+    if to_create:
+        MatchResult.objects.bulk_create(to_create, batch_size=500, ignore_conflicts=True)
+    if to_update:
+        MatchResult.objects.bulk_update(
+            to_update, ['score', 'status', 'criteria'], batch_size=500
         )
-    MatchResult.objects.filter(student=user).exclude(
-        scholarship__in=scholarships
-    ).delete()
+
+    stale = [sid for sid in existing if sid not in seen]
+    if stale:
+        MatchResult.objects.filter(student=user, scholarship_id__in=stale).delete()
 
     completion = compute_profile_completion(profile)
     if completion != profile.profile_completion:
