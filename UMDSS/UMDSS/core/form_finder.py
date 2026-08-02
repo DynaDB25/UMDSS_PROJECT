@@ -67,6 +67,34 @@ AGGREGATOR_HOSTS = (
 # Page furniture that never contains the real application link.
 CHROME_TAGS = ('nav', 'aside', 'footer', 'header', 'noscript')
 
+# Never mistake these for a funder's own website.
+JUNK_HOSTS = (
+    'facebook.com', 'twitter.com', 'x.com', 'linkedin.com', 'instagram.com',
+    'youtube.com', 'youtu.be', 'pinterest.com', 'tiktok.com', 'whatsapp.com',
+    'wa.me', 't.me', 'telegram.me', 'reddit.com', 'medium.com',
+    'google.com', 'googleapis.com', 'gstatic.com', 'gravatar.com',
+    'wordpress.com', 'wp.com', 'bit.ly', 'tinyurl.com', 'amazon.com',
+    'apple.com', 'microsoft.com', 'wikipedia.org', 'blogspot.com',
+)
+
+# Where funders habitually put their application page. Tried against the
+# funder's own domain only after their homepage gives us nothing.
+COMMON_APPLY_PATHS = ('/apply', '/how-to-apply', '/scholarships')
+PROBE_TIMEOUT = 5
+
+
+def _is_junk_host(url):
+    host = _host_of(url)
+    return not host or any(host == h or host.endswith('.' + h) for h in JUNK_HOSTS)
+
+
+def _root_of(url):
+    try:
+        p = urlparse(url)
+        return f'{p.scheme}://{p.netloc}'
+    except Exception:
+        return ''
+
 
 def _host_of(url):
     try:
@@ -132,14 +160,20 @@ def _fetch(url):
 
 
 def _scan(soup, base_url):
-    """Return (embeddable_url, apply_url, email, hop_candidates) from one page."""
+    """Pull everything useful out of one page.
+
+    Returns (embeddable_url, apply_url, email, hop_candidates, offsite_roots).
+    `offsite_roots` are the distinct third-party sites linked from the content,
+    which is how we work out whose site the funder actually runs.
+    """
     embeddable = None
     apply_url = None
     email = None
     hops = []
+    offsite = []
 
     if soup is None:
-        return embeddable, apply_url, email, hops
+        return embeddable, apply_url, email, hops, offsite
 
     # Drop menus, sidebars and footers before looking at anything: that is where
     # other scholarships' "Apply" links live.
@@ -154,7 +188,7 @@ def _scan(soup, base_url):
     for frame in soup.find_all('iframe', src=True):
         src = urljoin(base_url, frame['src'].strip())
         if _embeddable_kind(src):
-            return src, apply_url, email, hops
+            return src, apply_url, email, hops, offsite
 
     for a in soup.find_all('a', href=True):
         raw = a['href'].strip()
@@ -172,11 +206,19 @@ def _scan(soup, base_url):
 
         if _embeddable_kind(href):
             # Best possible result, stop looking.
-            return href, apply_url, email, hops
+            return href, apply_url, email, hops, offsite
 
         # A same-site "Apply" on an aggregator is a link to some other listing,
         # so treat it as a hop candidate rather than this scholarship's form.
         same_site = _host_of(href) == source_host
+
+        # Remember whose sites this page points at. When the listing yields no
+        # form, the funder's own site is the next place to look.
+        if not same_site and not _is_junk_host(href):
+            root = _root_of(href)
+            if root and root not in offsite and len(offsite) < 6:
+                offsite.append(root)
+
         if source_is_aggregator and same_site:
             continue
 
@@ -186,7 +228,45 @@ def _scan(soup, base_url):
         elif any(p in text for p in OFFICIAL_PHRASES) and len(hops) < 2:
             hops.append(href)
 
-    return embeddable, apply_url, email, hops
+    return embeddable, apply_url, email, hops, offsite
+
+
+def _probe_funder_site(root):
+    """Look for an application on a funder's own domain.
+
+    One request for the homepage, then a couple of the paths funders habitually
+    use. Returns (embeddable_url, apply_url, email) with anything it found.
+    """
+    home = _fetch(root)
+    if home is not None:
+        embed, apply_url, email, _, _ = _scan(home, root)
+        if embed:
+            return embed, None, email
+        if apply_url:
+            return None, apply_url, email
+    else:
+        email = None
+
+    for path in COMMON_APPLY_PATHS:
+        url = root.rstrip('/') + path
+        if not _is_safe_url(url):
+            continue
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=PROBE_TIMEOUT,
+                             stream=True, allow_redirects=True)
+            if r.status_code != 200 or 'html' not in (r.headers.get('content-type') or '').lower():
+                continue
+            soup = BeautifulSoup(r.raw.read(MAX_BYTES, decode_content=True), 'html.parser')
+        except Exception:
+            continue
+        embed, apply_url, page_email, _, _ = _scan(soup, url)
+        if embed:
+            return embed, None, page_email or email
+        # The page exists and is named /apply, so it is the application page
+        # even if it holds no onward link.
+        return None, (apply_url or url), page_email or email
+
+    return None, None, email
 
 
 def discover_application_form(source_url, follow=True):
@@ -196,7 +276,7 @@ def discover_application_form(source_url, follow=True):
         return result
 
     soup = _fetch(source_url)
-    embeddable, apply_url, email, hops = _scan(soup, source_url)
+    embeddable, apply_url, email, hops, offsite = _scan(soup, source_url)
 
     if embeddable:
         return {'url': embeddable, 'email': email or '', 'mode': 'online'}
@@ -208,13 +288,33 @@ def discover_application_form(source_url, follow=True):
             hop_soup = _fetch(hop)
             if hop_soup is None:
                 continue
-            hop_embed, hop_apply, hop_email, _ = _scan(hop_soup, hop)
+            hop_embed, hop_apply, hop_email, _, hop_offsite = _scan(hop_soup, hop)
             if hop_embed:
                 return {'url': hop_embed, 'email': hop_email or email or '', 'mode': 'online'}
             if apply_url is None and hop_apply:
                 apply_url = hop_apply
             if not email and hop_email:
                 email = hop_email
+            for root in hop_offsite:
+                if root not in offsite:
+                    offsite.append(root)
+
+    # Still nothing usable. Most listings are aggregator write-ups that link the
+    # funder without linking the form, so go to the funder's own site and look
+    # there. Only worth doing when the listing gave us no application at all.
+    if follow and not apply_url:
+        for root in offsite[:2]:
+            if _is_aggregator(root) or _host_of(root) == _host_of(source_url):
+                continue
+            site_embed, site_apply, site_email = _probe_funder_site(root)
+            if site_embed:
+                return {'url': site_embed, 'email': site_email or email or '', 'mode': 'online'}
+            if site_apply:
+                apply_url = site_apply
+                email = email or site_email
+                break
+            if not email and site_email:
+                email = site_email
 
     if apply_url:
         return {'url': apply_url, 'email': email or '', 'mode': 'online'}
