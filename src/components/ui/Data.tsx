@@ -21,20 +21,32 @@ export function Stat({
   className?: string
 }) {
   return (
-    <div className={cn('min-w-0 px-5 py-5 first:pl-0 last:pr-0', className)}>
-      <div className="flex items-center gap-2">
+    <div className={cn('min-w-0 px-4 py-4 sm:py-5 lg:px-5 lg:first:pl-0 lg:last:pr-0', className)}>
+      {/* The icon is decorative, so it gives up its space on a phone rather
+          than forcing the label to truncate to "ELIGIBLE MATCH...". */}
+      <div className="flex items-start gap-2 sm:items-center">
         {icon && (
-          <span className={cn('[&_svg]:h-3.5 [&_svg]:w-3.5', tone === 'band' ? 'text-band-muted' : 'text-ink-faint')}>
+          <span
+            className={cn(
+              'hidden shrink-0 sm:inline-flex sm:[&_svg]:h-3.5 sm:[&_svg]:w-3.5',
+              tone === 'band' ? 'text-band-muted' : 'text-ink-faint',
+            )}
+          >
             {icon}
           </span>
         )}
-        <p className={cn('t-overline truncate', tone === 'band' ? 'text-band-muted' : 'text-ink-muted')}>
+        <p
+          className={cn(
+            't-overline min-w-0 sm:truncate',
+            tone === 'band' ? 'text-band-muted' : 'text-ink-muted',
+          )}
+        >
           {label}
         </p>
       </div>
       <p
         className={cn(
-          'tabular mt-2 font-display text-[2rem] font-extrabold leading-none tracking-[-0.03em]',
+          'tabular mt-1.5 font-display text-2xl font-extrabold leading-none tracking-[-0.03em] sm:mt-2 sm:text-[2rem]',
           tone === 'accent' && 'text-accent',
           tone === 'ink' && 'text-ink',
           tone === 'band' && 'text-band-on',
@@ -43,7 +55,12 @@ export function Stat({
         {value}
       </p>
       {detail && (
-        <p className={cn('t-sm mt-2 truncate', tone === 'band' ? 'text-band-muted' : 'text-ink-muted')}>
+        <p
+          className={cn(
+            't-xs mt-1.5 line-clamp-2 sm:mt-2 sm:truncate sm:text-[0.8125rem]',
+            tone === 'band' ? 'text-band-muted' : 'text-ink-muted',
+          )}
+        >
           {detail}
         </p>
       )}
@@ -51,12 +68,18 @@ export function Stat({
   )
 }
 
-/** Hairline-divided container for a row of `Stat`s. */
+/**
+ * Hairline-divided container for a row of `Stat`s.
+ *
+ * Two up on phones: stacking four of these full width turned four numbers into
+ * about 400px of scrolling, which was the worst thing on the mobile dashboard.
+ */
 export function StatRow({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div
       className={cn(
-        'grid divide-y divide-rule border-y border-rule sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4',
+        'grid grid-cols-2 divide-x divide-y divide-rule border-y border-rule',
+        '[&>*:nth-child(-n+2)]:border-t-0 lg:grid-cols-4 lg:divide-y-0',
         className,
       )}
     >
@@ -109,17 +132,29 @@ export function ScoreRing({
   score,
   size = 56,
   className,
+  /** What the figure means. Defaults to a match score. */
+  label = 'Match score',
+  /** Match scores are graded; a completion percentage is not. */
+  tone,
 }: {
   score: number
   size?: number
   className?: string
+  label?: string
+  tone?: 'graded' | 'accent'
 }) {
   const stroke = 3
   const radius = (size - stroke) / 2
   const circumference = 2 * Math.PI * radius
   const offset = circumference - (Math.max(0, Math.min(100, score)) / 100) * circumference
-  const tone =
-    score >= 85 ? 'text-state-positive' : score >= 70 ? 'text-state-attention' : 'text-state-negative'
+  const stroke_tone =
+    tone === 'accent'
+      ? 'text-accent'
+      : score >= 85
+        ? 'text-state-positive'
+        : score >= 70
+          ? 'text-state-attention'
+          : 'text-state-negative'
 
   return (
     <div
@@ -144,7 +179,7 @@ export function ScoreRing({
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           strokeLinecap="round"
-          className={cn('transition-[stroke-dashoffset] duration-700 ease-brand', tone)}
+          className={cn('transition-[stroke-dashoffset] duration-700 ease-brand', stroke_tone)}
           stroke="currentColor"
         />
       </svg>
@@ -154,7 +189,9 @@ export function ScoreRing({
       >
         {Math.round(score)}
       </span>
-      <span className="sr-only">Match score {Math.round(score)} out of 100</span>
+      <span className="sr-only">
+        {label} {Math.round(score)} out of 100
+      </span>
     </div>
   )
 }
