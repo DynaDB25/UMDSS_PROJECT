@@ -231,6 +231,70 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         )
         return Response(self.get_serializer(app).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['get'], url_path='documents-zip')
+    def documents_zip(self, request, pk=None):
+        """GET /applications/{id}/documents-zip/ → every required document for
+        this application in one archive, ready to upload to the provider.
+
+        Documents are matched live rather than from the stored snapshot, so a
+        file uploaded after the application was started is still included.
+        """
+        import io
+        import os as _os
+        import zipfile
+        from django.http import HttpResponse as _HttpResponse
+        from .documents import match_requirement, label_for
+
+        app = self.get_object()
+        required = app.scholarship.documents or []
+        vault = list(VaultDocument.objects.filter(student=request.user))
+
+        buf = io.BytesIO()
+        included, missing = [], []
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            position = 0
+            for req in required:
+                key = match_requirement(req)
+                doc = next((d for d in vault if key and d.doc_type == key), None)
+                data = VaultDocumentViewSet.decrypt(doc) if doc else None
+                if doc is None or data is None:
+                    missing.append(req)
+                    continue
+                position += 1
+                ext = _os.path.splitext(VaultDocumentViewSet.original_name(doc))[1] or ''
+                safe = ''.join(c for c in label_for(doc.doc_type) if c.isalnum() or c in ' -_').strip()
+                zf.writestr(f'{position:02d} {safe}{ext}', data)
+                included.append(f'{req}: {doc.name}')
+
+            # A short checklist so the student can see at a glance what is in
+            # the archive and what they still have to find.
+            lines = [
+                f'{app.scholarship.name}',
+                f'Provider: {app.scholarship.provider}',
+                '',
+                'INCLUDED IN THIS ARCHIVE',
+            ]
+            lines += [f'  - {x}' for x in included] or ['  (nothing yet)']
+            if missing:
+                lines += ['', 'STILL MISSING, UPLOAD THESE TO YOUR VAULT']
+                lines += [f'  - {x}' for x in missing]
+            if app.scholarship.application_url:
+                lines += ['', f'Apply at: {app.scholarship.application_url}']
+            lines += ['', 'Prepared by ScholarCircle. Confirm requirements with the provider.']
+            zf.writestr('checklist.txt', '\n'.join(lines))
+
+        if not included:
+            return Response(
+                {'detail': 'None of the required documents are in your vault yet.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        slug = ''.join(c for c in app.scholarship.name if c.isalnum() or c in ' -_').strip()
+        slug = slug.replace(' ', '_')[:50] or 'application'
+        resp = _HttpResponse(buf.getvalue(), content_type='application/zip')
+        resp['Content-Disposition'] = f'attachment; filename="{slug}_documents.zip"'
+        return resp
+
     @action(detail=True, methods=['post'], url_path='mark-submitted')
     def mark_submitted(self, request, pk=None):
         """POST /applications/{id}/mark-submitted/ → the student confirms they
@@ -329,6 +393,25 @@ class VaultDocumentViewSet(viewsets.ModelViewSet):
             status='Verified',  # Auto-verify for demonstration
             encrypted=True
         )
+
+    @staticmethod
+    def decrypt(document):
+        """Plaintext bytes for a stored vault document, or None if unreadable.
+        Shared by the single-file download and the application ZIP bundle."""
+        if not document.file:
+            return None
+        try:
+            with document.file.open('rb') as f:
+                secure_data = f.read()
+            key = base64.urlsafe_b64decode(settings.VAULT_ENCRYPTION_KEY)
+            return AESGCM(key).decrypt(secure_data[:12], secure_data[12:], None)
+        except Exception:
+            return None
+
+    @staticmethod
+    def original_name(document):
+        """The filename as the student uploaded it, without the .enc suffix."""
+        return (document.file.name or '').split('/')[-1].replace('.enc', '')
 
     @action(detail=True, methods=['get'])
     def download(self, request, pk=None):

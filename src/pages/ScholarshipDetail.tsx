@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   ExternalLink,
   FileDown,
+  FolderDown,
   Send,
 } from 'lucide-react'
 import { Card, StatusPill, ScoreRing, Badge, Progress } from '../components/ui'
@@ -57,6 +58,7 @@ export default function ScholarshipDetail() {
   // The tracked application for this scholarship, once one exists.
   const [application, setApplication] = useState<any | null>(null)
   const [marking, setMarking] = useState(false)
+  const [zipping, setZipping] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -114,6 +116,23 @@ export default function ScholarshipDetail() {
       setApplyError(err?.message || 'Could not start your application. Please try again.')
     } finally {
       setApplying(false)
+    }
+  }
+
+  const handleDownloadDocs = async () => {
+    if (!application) return
+    setZipping(true)
+    setApplyError('')
+    try {
+      const safe = s.name.replace(/[^\w\d\-. ]+/g, '').replace(/\s+/g, '_').slice(0, 50)
+      await api.applications.downloadDocuments(
+        String(application.id).replace('app-', ''),
+        `${safe || 'application'}_documents.zip`,
+      )
+    } catch (err: any) {
+      setApplyError(err?.message || 'Could not build the document bundle.')
+    } finally {
+      setZipping(false)
     }
   }
 
@@ -444,6 +463,17 @@ export default function ScholarshipDetail() {
                       >
                         <Send className="h-4 w-4" /> Email {s.applicationEmail}
                       </a>
+                    )}
+
+                    {haveCount > 0 && (
+                      <button
+                        onClick={handleDownloadDocs}
+                        disabled={zipping}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-ink-800 py-2.5 text-sm font-semibold text-white hover:bg-ink-900 disabled:opacity-50"
+                      >
+                        <FolderDown className="h-4 w-4" />
+                        {zipping ? 'Preparing…' : `Download my ${haveCount} document${haveCount > 1 ? 's' : ''} (ZIP)`}
+                      </button>
                     )}
 
                     <button

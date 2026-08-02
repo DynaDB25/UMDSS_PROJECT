@@ -22,6 +22,18 @@ export const api = {
     create: (scholarshipId: string) => client.post('/applications/', { scholarship_id: scholarshipId }) as Promise<Application>,
     // The student confirms they actually sent it to the provider.
     markSubmitted: (id: string) => client.post(`/applications/${id}/mark-submitted/`, {}) as Promise<Application>,
+    // Every required document for this application, decrypted, in one archive.
+    downloadDocuments: async (id: string, filename: string) => {
+      const blob = (await client.get(`/applications/${id}/documents-zip/`)) as Blob
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    },
   },
   reference: () => client.get('/reference/') as Promise<{
     documentTypes: { key: string; label: string; category: string; keywords: string[] }[]
