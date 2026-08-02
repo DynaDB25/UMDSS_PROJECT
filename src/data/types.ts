@@ -61,6 +61,13 @@ export interface Scholarship {
   benefits: string[]
   documents: string[]
   tags: string[]
+  // Gender restriction: 'any' unless the funder reserves it (women-only funds
+  // are common in STEM and leadership).
+  genderScope?: 'any' | 'female' | 'male'
+  // How the student actually applies with the provider.
+  applicationUrl?: string
+  applicationEmail?: string
+  applicationMode?: 'online' | 'email' | 'offline' | 'unknown'
 }
 
 export interface MatchResult {

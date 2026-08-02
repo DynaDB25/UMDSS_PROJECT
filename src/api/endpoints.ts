@@ -20,7 +20,14 @@ export const api = {
   applications: {
     list: () => client.get('/applications/') as Promise<Application[]>,
     create: (scholarshipId: string) => client.post('/applications/', { scholarship_id: scholarshipId }) as Promise<Application>,
+    // The student confirms they actually sent it to the provider.
+    markSubmitted: (id: string) => client.post(`/applications/${id}/mark-submitted/`, {}) as Promise<Application>,
   },
+  reference: () => client.get('/reference/') as Promise<{
+    documentTypes: { key: string; label: string; category: string; keywords: string[] }[]
+    regions: string[]
+    programmes: string[]
+  }>,
   documents: {
     list: () => client.get('/documents/') as Promise<VaultDocument[]>,
     upload: (data: FormData) => client.post('/documents/', data) as Promise<VaultDocument>,

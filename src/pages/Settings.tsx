@@ -87,6 +87,7 @@ export default function Settings() {
         phone: formData.get('phone'),
         home_district: formData.get('home_district'),
         region: formData.get('region'),
+        gender: formData.get('gender'),
         institution: formData.get('institution'),
         programme: formData.get('programme'),
         student_id: formData.get('student_id'),
@@ -238,7 +239,19 @@ export default function Settings() {
                     <FieldRow label="Home district">
                       <input name="home_district" className={inputCls} defaultValue={user.profile?.home_district} />
                     </FieldRow>
+                    <FieldRow label="Gender">
+                      <select name="gender" className={selectCls} defaultValue={user.profile?.gender || ''}>
+                        <option value="">Select…</option>
+                        <option>Female</option>
+                        <option>Male</option>
+                        <option>Prefer not to say</option>
+                      </select>
+                    </FieldRow>
                   </div>
+                  <p className="px-5 pb-1 text-xs text-ink-500 sm:px-6">
+                    Some funders run women-only scholarships. Setting your gender lets the matcher
+                    surface those for you.
+                  </p>
                   <div className="flex items-center justify-end gap-3 p-5 sm:p-6">
                     <button
                       type="submit"

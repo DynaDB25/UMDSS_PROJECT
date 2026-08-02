@@ -83,6 +83,19 @@ class Scholarship(models.Model):
         ('unknown', 'Not classified'),
     ]
 
+    GENDER_SCOPES = [
+        ('any', 'Open to all genders'),
+        ('female', 'Women only'),
+        ('male', 'Men only'),
+    ]
+
+    APPLICATION_MODES = [
+        ('online', 'Apply online on the provider\'s portal'),
+        ('email', 'Apply by email'),
+        ('offline', 'Apply in person / by post'),
+        ('unknown', 'Not stated'),
+    ]
+
     slug = models.SlugField(unique=True)
     source_url = models.URLField(
         max_length=500, blank=True, default='',
@@ -116,7 +129,27 @@ class Scholarship(models.Model):
     region = models.JSONField(default=list, help_text='List of eligible regions or ["All"]')
     programmes = models.JSONField(default=list, help_text='List of eligible programmes or ["All"]')
     max_aggregate = models.IntegerField(default=36)
+    # Some awards are restricted by gender (a lot of STEM and leadership funds
+    # in Ghana are women-only). 'any' means no restriction.
+    gender_scope = models.CharField(
+        max_length=10, choices=GENDER_SCOPES, default='any',
+        help_text="Restrict this award to one gender. Women-only funds use 'female'.",
+    )
     need_based = models.BooleanField(default=False)
+
+    # How a student actually applies to the funder. ScholarCircle tracks the
+    # application, but the real submission happens on the provider's side.
+    application_url = models.URLField(
+        max_length=500, blank=True, default='',
+        help_text='Direct link to the provider application form or portal.',
+    )
+    application_email = models.EmailField(
+        blank=True, default='',
+        help_text='Where to send the application when the mode is email.',
+    )
+    application_mode = models.CharField(
+        max_length=10, choices=APPLICATION_MODES, default='unknown',
+    )
     slots = models.IntegerField(default=0)
     applicants = models.IntegerField(default=0)
     summary = models.TextField(blank=True)
@@ -165,6 +198,10 @@ class Application(models.Model):
     last_update = models.DateField(auto_now=True)
     progress = models.IntegerField(default=0)
     timeline = models.JSONField(default=list, help_text='List of {label, date, done} objects')
+    # Snapshot of vault documents auto-attached at apply time, plus any required
+    # documents the student was still missing. List of {requirement, name?,
+    # doc_type?, label?, have} objects.
+    attached_documents = models.JSONField(default=list)
 
     def __str__(self):
         return f"{self.student.get_full_name()} → {self.scholarship.name} [{self.status}]"
@@ -188,6 +225,9 @@ class VaultDocument(models.Model):
     name = models.CharField(max_length=200)
     file = models.FileField(upload_to='vault_documents/', null=True, blank=True)
     file_type = models.CharField(max_length=10, default='PDF')
+    # Which document this is (ghana_card, transcript, admission_letter, …). Drives
+    # the vault checklist and the auto-attach when applying. See core/documents.py.
+    doc_type = models.CharField(max_length=40, blank=True, default='')
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
     size = models.CharField(max_length=20, blank=True)
     uploaded_on = models.CharField(max_length=20, default='—')

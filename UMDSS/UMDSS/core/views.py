@@ -1,5 +1,5 @@
 from rest_framework import generics, permissions, status, viewsets
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -152,29 +152,116 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         if existing:
             return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
 
+        # Smart auto-attach: match each required document against the student's
+        # vault by type, and snapshot what was attached vs still missing.
+        from django.db.models import F
+        from .documents import match_requirement, label_for
+
+        required = scholarship.documents or []
+        vault = list(VaultDocument.objects.filter(student=request.user))
+        attached, attached_ids = [], []
+        for req in required:
+            key = match_requirement(req)
+            doc = next((d for d in vault if key and d.doc_type == key), None)
+            if doc:
+                attached.append({
+                    'requirement': req,
+                    'name': doc.name,
+                    'doc_type': doc.doc_type,
+                    'label': label_for(doc.doc_type),
+                    'have': True,
+                })
+                attached_ids.append(doc.id)
+            else:
+                attached.append({'requirement': req, 'have': False})
+
+        req_count = len(required)
+        have_count = sum(1 for a in attached if a['have'])
+        # Preparing the file is real progress, but the application is not
+        # submitted until the student sends it to the funder.
+        progress = (10 + int(40 * have_count / req_count)) if req_count else 25
+
         today = datetime.date.today().strftime('%b %d, %Y')
+        timeline = [{'label': 'Application started', 'date': today, 'done': True}]
+        if req_count:
+            timeline.append({
+                'label': f'Documents ready ({have_count}/{req_count})',
+                'date': today if have_count == req_count else 'In progress',
+                'done': have_count == req_count,
+            })
+        timeline += [
+            {'label': f'Submit to {scholarship.provider}', 'date': 'Not yet', 'done': False},
+            {'label': 'Under review', 'date': 'Pending', 'done': False},
+            {'label': 'Decision', 'date': 'Pending', 'done': False},
+        ]
+
         app = Application.objects.create(
             student=request.user,
             scholarship=scholarship,
-            status='Submitted',
-            submitted_on=today,
-            progress=25,
-            timeline=[
-                {'label': 'Application started', 'date': today, 'done': True},
-                {'label': 'Submitted', 'date': today, 'done': True},
-                {'label': 'Under review', 'date': 'Pending', 'done': False},
-                {'label': 'Decision', 'date': 'Pending', 'done': False},
-            ],
+            # ScholarCircle does not submit on the student's behalf, so calling
+            # this 'Submitted' would be a lie. It stays a draft until they
+            # confirm they sent it to the provider.
+            status='Draft',
+            submitted_on='—',
+            progress=progress,
+            timeline=timeline,
+            attached_documents=attached,
         )
+
+        # Count these documents as linked to one more application.
+        if attached_ids:
+            VaultDocument.objects.filter(id__in=attached_ids).update(
+                linked_applications=F('linked_applications') + 1)
+
+        if req_count:
+            doc_line = (f'{have_count} of {req_count} required documents were matched '
+                        f'from your vault.')
+            if have_count < req_count:
+                doc_line += ' Upload the missing ones to complete your pack.'
+        else:
+            doc_line = 'This funder did not list specific document requirements.'
         Notification.objects.create(
             student=request.user,
             channel='System',
             category='Status',
-            title=f'Application submitted: {scholarship.name}',
-            body=f'Your application to {scholarship.provider} has been received and is now with the review team.',
+            title=f'Application started: {scholarship.name}',
+            body=(f'Your application pack for {scholarship.provider} is ready. {doc_line} '
+                  f'Next step: send it to the provider, then mark it submitted here to track it.'),
             time='Just now',
         )
         return Response(self.get_serializer(app).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='mark-submitted')
+    def mark_submitted(self, request, pk=None):
+        """POST /applications/{id}/mark-submitted/ → the student confirms they
+        actually sent the application to the provider."""
+        import datetime
+        app = self.get_object()
+        if app.status != 'Draft':
+            return Response(self.get_serializer(app).data)
+
+        today = datetime.date.today().strftime('%b %d, %Y')
+        app.status = 'Submitted'
+        app.submitted_on = today
+        app.progress = max(app.progress, 60)
+        timeline = app.timeline or []
+        for step in timeline:
+            if str(step.get('label', '')).startswith('Submit to'):
+                step['done'] = True
+                step['date'] = today
+        app.timeline = timeline
+        app.save(update_fields=['status', 'submitted_on', 'progress', 'timeline'])
+
+        Notification.objects.create(
+            student=request.user,
+            channel='System',
+            category='Status',
+            title=f'Application submitted: {app.scholarship.name}',
+            body=(f'You marked your {app.scholarship.name} application as submitted to '
+                  f'{app.scholarship.provider}. We will keep it in your tracker.'),
+            time='Just now',
+        )
+        return Response(self.get_serializer(app).data)
 
 
 # ── Vault Documents ───────────────────────────────────
@@ -196,6 +283,15 @@ class VaultDocumentViewSet(viewsets.ModelViewSet):
         return VaultDocument.objects.filter(student=self.request.user)
 
     def perform_create(self, serializer):
+        from .documents import is_valid_type, category_for
+
+        # What kind of document is this? Drives the vault checklist and the
+        # auto-attach at apply time. Fall back to 'other' if unrecognised.
+        doc_type = (self.request.data.get('doc_type') or '').strip()
+        if not is_valid_type(doc_type):
+            doc_type = 'other'
+        category = category_for(doc_type)
+
         # Encrypt the file before saving
         file_obj = self.request.FILES.get('file')
         size_str = ""
@@ -225,6 +321,8 @@ class VaultDocumentViewSet(viewsets.ModelViewSet):
 
         serializer.save(
             student=self.request.user,
+            doc_type=doc_type,
+            category=category,
             size=size_str,
             file_type=file_type,
             uploaded_on=datetime.date.today().strftime('%b %d, %Y'),
@@ -602,8 +700,12 @@ class AdminScholarshipCreateView(APIView):
 
         valid_types = {c[0] for c in Scholarship.PROVIDER_TYPES}
         valid_scopes = {c[0] for c in Scholarship.LEVEL_SCOPES}
+        valid_genders = {c[0] for c in Scholarship.GENDER_SCOPES}
+        valid_modes = {c[0] for c in Scholarship.APPLICATION_MODES}
         provider_type = d.get('provider_type') if d.get('provider_type') in valid_types else 'Foundation'
         level_scope = d.get('level_scope') if d.get('level_scope') in valid_scopes else 'tertiary_any'
+        gender_scope = d.get('gender_scope') if d.get('gender_scope') in valid_genders else 'any'
+        application_mode = d.get('application_mode') if d.get('application_mode') in valid_modes else 'unknown'
 
         scholarship = Scholarship.objects.create(
             slug=slug,
@@ -624,6 +726,10 @@ class AdminScholarshipCreateView(APIView):
             tags=as_list(d.get('tags'), []),
             origin='seeded',
             level_scope=level_scope,
+            gender_scope=gender_scope,
+            application_mode=application_mode,
+            application_url=(d.get('application_url') or '').strip(),
+            application_email=(d.get('application_email') or '').strip(),
         )
         return Response(ScholarshipSerializer(scholarship).data, status=status.HTTP_201_CREATED)
 
@@ -633,8 +739,13 @@ class AdminScholarshipCreateView(APIView):
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
 def reference_data(request):
-    """GET /api/reference/ → regions, programmes etc."""
+    """GET /api/reference/ → regions, programmes, document types etc."""
+    from .documents import DOCUMENT_TYPES
     return Response({
+        'documentTypes': [
+            {'key': d['key'], 'label': d['label'], 'category': d['category'], 'keywords': d['keywords']}
+            for d in DOCUMENT_TYPES
+        ],
         'regions': [
             'Ahafo', 'Ashanti', 'Bono', 'Bono East', 'Central', 'Eastern',
             'Greater Accra', 'North East', 'Northern', 'Oti', 'Savannah',

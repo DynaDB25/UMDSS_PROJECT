@@ -71,6 +71,7 @@ class ScholarshipSerializer(serializers.ModelSerializer):
             'region', 'programmes', 'max_aggregate', 'need_based',
             'slots', 'applicants', 'summary', 'benefits', 'documents', 'tags',
             'origin', 'level_scope', 'source_url',
+            'gender_scope', 'application_url', 'application_email', 'application_mode',
         ]
 
     def to_representation(self, instance):
@@ -99,6 +100,10 @@ class ScholarshipSerializer(serializers.ModelSerializer):
             'benefits': data['benefits'],
             'documents': data['documents'],
             'tags': data['tags'],
+            'genderScope': data['gender_scope'],
+            'applicationUrl': data['application_url'],
+            'applicationEmail': data['application_email'],
+            'applicationMode': data['application_mode'],
         }
 
 
@@ -127,9 +132,9 @@ class ApplicationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'scholarship_id', 'scholarship_name', 'provider',
             'initials', 'logo_color', 'status', 'submitted_on',
-            'last_update', 'progress', 'amount', 'timeline',
+            'last_update', 'progress', 'amount', 'timeline', 'attached_documents',
         ]
-        read_only_fields = ['status', 'submitted_on', 'last_update', 'progress', 'timeline']
+        read_only_fields = ['status', 'submitted_on', 'last_update', 'progress', 'timeline', 'attached_documents']
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -146,6 +151,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
             'progress': data['progress'],
             'amount': data['amount'],
             'timeline': data['timeline'],
+            'attachedDocuments': data['attached_documents'] or [],
         }
 
 
@@ -153,16 +159,25 @@ class VaultDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = VaultDocument
         fields = [
-            'id', 'name', 'file', 'file_type', 'category', 'size',
+            'id', 'name', 'file', 'file_type', 'doc_type', 'category', 'size',
             'uploaded_on', 'status', 'linked_applications', 'encrypted',
         ]
+        # category is derived from doc_type server-side, so the client need not
+        # send it (the view sets both in perform_create).
+        extra_kwargs = {
+            'doc_type': {'required': False},
+            'category': {'required': False},
+        }
 
     def to_representation(self, instance):
+        from .documents import label_for
         data = super().to_representation(instance)
         return {
             'id': f'doc-{data["id"]}',
             'name': data['name'],
             'type': data['file_type'],
+            'docType': data['doc_type'],
+            'docTypeLabel': label_for(data['doc_type']) if data['doc_type'] else '',
             'category': data['category'],
             'size': data['size'],
             'uploadedOn': data['uploaded_on'],

@@ -56,8 +56,22 @@ function formatMb(mb: number): string {
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(mb * 1024))} KB`
 }
 
+// Documents most Ghanaian scholarship applications ask for. Drives the
+// readiness checklist so a student can see at a glance what is still missing.
+const ESSENTIAL_TYPES = [
+  'ghana_card',
+  'wassce',
+  'transcript',
+  'admission_letter',
+  'passport_photo',
+  'proof_of_residence',
+]
+
+type DocType = { key: string; label: string; category: string }
+
 export default function Vault() {
   const [documents, setDocuments] = useState<any[]>([])
+  const [docTypes, setDocTypes] = useState<DocType[]>([])
   const [loading, setLoading] = useState(true)
   const [cat, setCat] = useState<(typeof categories)[number]>('All')
   const [query, setQuery] = useState('')
@@ -66,15 +80,32 @@ export default function Vault() {
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
+  // Pending upload: the chosen file waits here until the student says what it is.
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [pendingType, setPendingType] = useState('')
+  const [pendingName, setPendingName] = useState('')
+  const [uploadError, setUploadError] = useState('')
+
   const fetchDocuments = () => {
     api.documents.list().then(setDocuments).finally(() => setLoading(false))
   }
 
   useEffect(() => {
     fetchDocuments()
+    api.reference()
+      .then((r) => setDocTypes(r.documentTypes || []))
+      .catch(() => setDocTypes([]))
   }, [])
 
   const rawId = (id: string) => id.replace('doc-', '')
+
+  const haveType = (key: string) => documents.some((d) => d.docType === key)
+
+  // Open the file picker, remembering which type the student intends it to be.
+  const pickFileFor = (typeKey: string) => {
+    setPendingType(typeKey)
+    fileInputRef.current?.click()
+  }
 
   const handleDelete = async (doc: any) => {
     if (!window.confirm(`Permanently delete “${doc.name}”? This can’t be undone.`)) return
@@ -91,29 +122,56 @@ export default function Vault() {
     }
   }
   
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Step 1: a file was chosen. Hold it and ask what it is before uploading.
+  const handleFileChosen = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return
     const file = e.target.files[0]
+    setPendingFile(file)
+    setPendingName(file.name.replace(/\.[^.]+$/, ''))
+    setUploadError('')
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const cancelUpload = () => {
+    setPendingFile(null)
+    setPendingType('')
+    setPendingName('')
+    setUploadError('')
+  }
+
+  // Step 2: confirmed. Upload with its type so the vault knows which is which.
+  const confirmUpload = async () => {
+    if (!pendingFile || !pendingType) {
+      setUploadError('Please choose what kind of document this is.')
+      return
+    }
     setIsUploading(true)
-    
+    setUploadError('')
+
     const formData = new FormData()
-    formData.append('file', file)
-    formData.append('name', file.name)
-    formData.append('category', cat === 'All' ? 'Other' : cat)
-    
+    formData.append('file', pendingFile)
+    formData.append('name', pendingName.trim() || pendingFile.name)
+    formData.append('doc_type', pendingType)
+
     try {
       await api.documents.upload(formData)
-      fetchDocuments() // Refresh list
-    } catch (err) {
+      cancelUpload()
+      fetchDocuments()
+    } catch (err: any) {
       console.error('Upload failed:', err)
-      alert('Upload failed. Please try again.')
+      setUploadError(err?.message || 'Upload failed. Please try again.')
     } finally {
       setIsUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
-  
+
   if (loading) return <div>Loading vault...</div>
+
+  const essentials = ESSENTIAL_TYPES.map((key) => {
+    const t = docTypes.find((d) => d.key === key)
+    return { key, label: t?.label || key, have: haveType(key) }
+  })
+  const readyCount = essentials.filter((e) => e.have).length
 
   const filtered = documents.filter(
     (d) =>
@@ -187,19 +245,74 @@ export default function Vault() {
         </div>
         <p className="mt-3 font-semibold text-ink-800">Drag & drop documents here</p>
         <p className="text-sm text-ink-500">PDF, JPG or PNG up to 10 MB · Ghana Card, WASSCE slip, admission letter</p>
-        <input 
-          type="file" 
-          className="hidden" 
-          ref={fileInputRef} 
-          onChange={handleFileUpload}
+        <input
+          type="file"
+          className="hidden"
+          ref={fileInputRef}
+          onChange={handleFileChosen}
         />
-        <button 
+        <button
           disabled={isUploading}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => pickFileFor('')}
           className="mt-4 rounded-xl bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-800 disabled:opacity-50"
         >
-          {isUploading ? 'Encrypting & Uploading...' : 'Browse files'}
+          {isUploading ? 'Encrypting & uploading…' : 'Browse files'}
         </button>
+        <p className="mt-2 text-xs text-ink-400">
+          You will tag each file so we can attach it automatically when you apply.
+        </p>
+      </Card>
+
+      {/* Readiness checklist — what applications actually ask for */}
+      <Card className="p-5 sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="font-display text-lg font-bold text-ink-900">Application readiness</h2>
+            <p className="text-sm text-ink-500">
+              The documents Ghanaian funders ask for most. Anything here is attached automatically
+              when you apply.
+            </p>
+          </div>
+          <span
+            className={cn(
+              'rounded-full px-3 py-1 text-sm font-semibold',
+              readyCount === essentials.length
+                ? 'bg-emerald-50 text-emerald-700'
+                : 'bg-amber-50 text-amber-700',
+            )}
+          >
+            {readyCount} of {essentials.length} ready
+          </span>
+        </div>
+
+        <div className="mt-4 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+          {essentials.map((e) => (
+            <div
+              key={e.key}
+              className={cn(
+                'flex items-center gap-2.5 rounded-xl border p-3',
+                e.have ? 'border-emerald-100 bg-emerald-50/50' : 'border-ink-200 bg-white',
+              )}
+            >
+              {e.have ? (
+                <CheckCircle2 className="h-4.5 w-4.5 shrink-0 text-emerald-500" />
+              ) : (
+                <AlertTriangle className="h-4.5 w-4.5 shrink-0 text-amber-500" />
+              )}
+              <span className={cn('flex-1 text-sm', e.have ? 'text-ink-700' : 'text-ink-500')}>
+                {e.label}
+              </span>
+              {!e.have && (
+                <button
+                  onClick={() => pickFileFor(e.key)}
+                  className="shrink-0 rounded-lg bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100"
+                >
+                  Upload
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
       </Card>
 
       {/* Controls */}
@@ -296,6 +409,9 @@ export default function Vault() {
               </div>
 
               <p className="mt-3 line-clamp-2 font-semibold text-ink-900">{doc.name}</p>
+              {doc.docTypeLabel && (
+                <p className="mt-1 text-xs font-semibold text-brand-600">{doc.docTypeLabel}</p>
+              )}
               <div className="mt-1.5 flex items-center gap-2 text-xs text-ink-400">
                 <Badge tone="ink">{doc.type}</Badge>
                 <span>{doc.size}</span>
@@ -322,7 +438,7 @@ export default function Vault() {
               <div className="mt-4 flex gap-2">
                 {doc.status === 'Action needed' ? (
                   <button
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => pickFileFor(doc.docType || '')}
                     className="flex-1 rounded-lg bg-brand-700 py-2 text-xs font-semibold text-white hover:bg-brand-800"
                   >
                     Upload now
@@ -352,7 +468,7 @@ export default function Vault() {
                   every application.
                 </p>
                 <button
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => pickFileFor('')}
                   className="mt-4 rounded-xl bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-800"
                 >
                   Upload your first document
@@ -368,6 +484,89 @@ export default function Vault() {
           </Card>
         )}
       </div>
+
+      {/* "What is this document?" — the step that makes the vault smart */}
+      {pendingFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-ink-900/50 backdrop-blur-sm" onClick={() => !isUploading && cancelUpload()} />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative w-full max-w-lg rounded-2xl bg-white shadow-xl"
+          >
+            <div className="border-b border-ink-200/70 px-6 py-4">
+              <h3 className="font-display text-lg font-bold text-ink-900">What is this document?</h3>
+              <p className="mt-0.5 text-sm text-ink-500">
+                Tagging it lets us attach it automatically to every application that asks for it.
+              </p>
+            </div>
+
+            <div className="space-y-4 p-6">
+              <div className="flex items-center gap-3 rounded-xl bg-ink-50 p-3">
+                <FileText className="h-5 w-5 shrink-0 text-ink-400" />
+                <span className="min-w-0 flex-1 truncate text-sm text-ink-700">{pendingFile.name}</span>
+                <span className="shrink-0 text-xs text-ink-400">
+                  {formatMb(pendingFile.size / (1024 * 1024))}
+                </span>
+              </div>
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-ink-600">Document type *</span>
+                <select
+                  value={pendingType}
+                  onChange={(e) => setPendingType(e.target.value)}
+                  className="h-11 w-full rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-800 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                >
+                  <option value="">Select what this document is…</option>
+                  {docTypes.map((t) => (
+                    <option key={t.key} value={t.key}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-ink-600">Label (optional)</span>
+                <input
+                  value={pendingName}
+                  onChange={(e) => setPendingName(e.target.value)}
+                  placeholder="e.g. Ghana Card (front)"
+                  className="h-11 w-full rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-800 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                />
+              </label>
+
+              {pendingType && haveType(pendingType) && (
+                <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  You already have a document of this type. Uploading another is fine, we will use
+                  the best match when you apply.
+                </p>
+              )}
+
+              {uploadError && (
+                <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{uploadError}</p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  onClick={cancelUpload}
+                  disabled={isUploading}
+                  className="rounded-xl px-4 py-2.5 text-sm font-semibold text-ink-600 hover:bg-ink-100 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmUpload}
+                  disabled={isUploading || !pendingType}
+                  className="rounded-xl bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-50"
+                >
+                  {isUploading ? 'Encrypting & uploading…' : 'Upload securely'}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   )
 }

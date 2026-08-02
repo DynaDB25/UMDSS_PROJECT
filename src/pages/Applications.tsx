@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ClipboardList, CheckCircle2, Circle, Calendar, ChevronRight } from 'lucide-react'
+import { ClipboardList, CheckCircle2, Circle, Calendar, ChevronRight, AlertTriangle } from 'lucide-react'
 import { api } from '../api/endpoints'
 import { Card, StatusPill, Progress } from '../components/ui'
 import { ScholarshipLogo } from '../components/ScholarshipLogo'
@@ -133,6 +133,47 @@ export default function Applications() {
                       </div>
 
                       <div className="space-y-3">
+                        {a.status === 'Draft' && (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-amber-800">
+                              <AlertTriangle className="h-4 w-4" /> Not submitted yet
+                            </div>
+                            <p className="mt-1 text-sm text-amber-700">
+                              Your pack is ready. Send it to {a.provider} on their own form, then mark
+                              it submitted.
+                            </p>
+                            <Link
+                              to={`/app/matches/${a.scholarshipId}`}
+                              className="mt-3 block w-full rounded-lg bg-amber-600 py-2 text-center text-xs font-semibold text-white hover:bg-amber-700"
+                            >
+                              Open my application pack
+                            </Link>
+                          </div>
+                        )}
+
+                        {Array.isArray(a.attachedDocuments) && a.attachedDocuments.length > 0 && (
+                          <div className="rounded-xl bg-white p-4 ring-1 ring-ink-200">
+                            <p className="text-xs font-semibold text-ink-600">Documents</p>
+                            <div className="mt-2 space-y-1.5">
+                              {a.attachedDocuments.map((d: any, idx: number) => (
+                                <div key={idx} className="flex items-start gap-2 text-xs">
+                                  {d.have ? (
+                                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                                  ) : (
+                                    <Circle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-300" />
+                                  )}
+                                  <span className={cn('flex-1', d.have ? 'text-ink-700' : 'text-ink-400')}>
+                                    {d.requirement}
+                                    {d.have && d.name && (
+                                      <span className="block text-[11px] text-emerald-600">{d.name}</span>
+                                    )}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {a.status === 'Interview' && (
                           <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
                             <div className="flex items-center gap-2 text-sm font-semibold text-violet-800">

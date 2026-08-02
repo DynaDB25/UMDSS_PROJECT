@@ -65,6 +65,8 @@ def has_published_criteria(scholarship) -> bool:
         scholarship.max_aggregate == DEFAULT_MAX_AGGREGATE
         and _open_to_all(scholarship.region)
         and _open_to_all(scholarship.programmes)
+        # A gender restriction is itself a published criterion.
+        and (getattr(scholarship, 'gender_scope', 'any') or 'any') == 'any'
     )
 
 
@@ -123,6 +125,37 @@ def compute_match(profile, scholarship) -> dict:
             'detail': f'This award is for: {scholarship.get_level_scope_display().lower()}',
         })
         hard_fail = True
+
+    # ── Gender restriction (hard gate) ────────────────
+    # Women-only (and the rarer men-only) awards are a real category in Ghana.
+    # Getting this wrong in either direction is costly: surfacing a women-only
+    # fund to a man wastes his time, and hiding it from a woman costs her money.
+    gender_scope = getattr(scholarship, 'gender_scope', 'any') or 'any'
+    if gender_scope != 'any':
+        wanted = 'Female' if gender_scope == 'female' else 'Male'
+        audience = 'Women' if gender_scope == 'female' else 'Men'
+        if not profile.gender or profile.gender == 'Prefer not to say':
+            # We cannot confirm eligibility without an answer, so we neither
+            # claim it nor rule them out.
+            criteria.append({
+                'label': f'{audience}-only award',
+                'met': False,
+                'detail': f'Open to {audience.lower()} only. Add your gender in Settings so we can confirm this one',
+            })
+            capped = True
+        elif profile.gender == wanted:
+            criteria.append({
+                'label': f'{audience}-only award',
+                'met': True,
+                'detail': f'Reserved for {audience.lower()} — you qualify on this criterion',
+            })
+        else:
+            criteria.append({
+                'label': f'{audience}-only award',
+                'met': False,
+                'detail': f'This award is open to {audience.lower()} only',
+            })
+            hard_fail = True
 
     # ── WASSCE aggregate ──────────────────────────────
     aggregate = profile.wassce_aggregate
@@ -209,7 +242,12 @@ def compute_match(profile, scholarship) -> dict:
 
     # ── Status ────────────────────────────────────────
     if hard_fail:
+        # A failed gate means the student cannot receive this award, so a high
+        # score from the criteria that did pass would be actively misleading
+        # (a men-only profile scoring 100% on a women-only fund). The criteria
+        # list still explains exactly which gate failed.
         status = 'Not eligible'
+        score = 0
     elif capped:
         status = 'Partial match'
         score = min(score, STRONG_MATCH_THRESHOLD - 1)
@@ -225,7 +263,12 @@ def compute_match(profile, scholarship) -> dict:
 
 def compute_profile_completion(profile) -> int:
     """Percentage of the fields the matcher and application flow actually use."""
-    common = [profile.phone, profile.region, profile.home_district, profile.need_level]
+    # Gender counts because the matcher gates women-only awards on it
+    # ('Prefer not to say' is a real answer and counts as filled).
+    common = [
+        profile.phone, profile.region, profile.home_district,
+        profile.need_level, profile.gender,
+    ]
     if profile.student_type == 'SHS':
         track = [
             profile.shs_school, profile.shs_level, profile.wassce_status,

@@ -43,6 +43,19 @@ const levelScopes: [string, string][] = [
   ['unknown', 'Not classified'],
 ]
 
+const genderScopes: [string, string][] = [
+  ['any', 'Open to all genders'],
+  ['female', 'Women only'],
+  ['male', 'Men only'],
+]
+
+const applicationModes: [string, string][] = [
+  ['unknown', 'Not stated'],
+  ['online', 'Apply online'],
+  ['email', 'Apply by email'],
+  ['offline', 'In person / by post'],
+]
+
 const emptyForm = {
   name: '',
   provider: '',
@@ -52,6 +65,10 @@ const emptyForm = {
   region: '',
   programmes: '',
   level_scope: 'tertiary_any',
+  gender_scope: 'any',
+  application_mode: 'unknown',
+  application_url: '',
+  application_email: '',
   summary: '',
 }
 
@@ -417,6 +434,26 @@ export default function Admin() {
                 </Field>
                 <Field label="Eligible programmes">
                   <input value={form.programmes} onChange={(e) => setForm({ ...form, programmes: e.target.value })} className={inputCls} placeholder="All  ·  or  BSc Computer Science, LLB Law" />
+                </Field>
+                <Field label="Gender restriction">
+                  <select value={form.gender_scope} onChange={(e) => setForm({ ...form, gender_scope: e.target.value })} className={inputCls}>
+                    {genderScopes.map(([v, l]) => (
+                      <option key={v} value={v}>{l}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="How to apply">
+                  <select value={form.application_mode} onChange={(e) => setForm({ ...form, application_mode: e.target.value })} className={inputCls}>
+                    {applicationModes.map(([v, l]) => (
+                      <option key={v} value={v}>{l}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Application form link">
+                  <input value={form.application_url} onChange={(e) => setForm({ ...form, application_url: e.target.value })} className={inputCls} placeholder="https://provider.org/apply" />
+                </Field>
+                <Field label="Application email">
+                  <input value={form.application_email} onChange={(e) => setForm({ ...form, application_email: e.target.value })} className={inputCls} placeholder="scholarships@provider.org" />
                 </Field>
               </div>
               <Field label="Summary">

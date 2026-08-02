@@ -40,7 +40,7 @@ const INSTITUTIONS = [
 const stepsMeta = [
   { icon: GraduationCap, title: 'Student type' },
   { icon: BookOpen, title: 'Academics' },
-  { icon: MapPin, title: 'Origin & region' },
+  { icon: MapPin, title: 'Background' },
   { icon: Wallet, title: 'Financial need' },
   { icon: ClipboardCheck, title: 'Review' },
 ]
@@ -82,6 +82,7 @@ export default function Onboarding() {
   const [programme, setProgramme] = useState('')
   const [region, setRegion] = useState('')
   const [district, setDistrict] = useState('')
+  const [gender, setGender] = useState('')
   const [need, setNeed] = useState('')
 
   const aggregateNum = aggregate === '' ? null : Number(aggregate)
@@ -110,7 +111,7 @@ export default function Onboarding() {
           aggregateValid
         )
       case 2:
-        return region !== '' && district.trim().length > 1
+        return region !== '' && district.trim().length > 1 && gender !== ''
       case 3:
         return need !== ''
       default:
@@ -137,6 +138,7 @@ export default function Onboarding() {
           wassce_aggregate: needsAggregate && aggregateValid ? aggregateNum : null,
           region,
           home_district: district.trim(),
+          gender,
           need_level: need,
         },
       }
@@ -170,6 +172,7 @@ export default function Onboarding() {
           },
           { l: 'Intended programme', v: programme },
           { l: 'Home region', v: `${region} · ${district}` },
+          { l: 'Gender', v: gender },
           { l: 'Financial need', v: `${need} need` },
         ]
       : [
@@ -180,6 +183,7 @@ export default function Onboarding() {
           { l: 'Academic standing', v: standing },
           { l: 'WASSCE aggregate', v: aggregate },
           { l: 'Home region', v: `${region} · ${district}` },
+          { l: 'Gender', v: gender },
           { l: 'Financial need', v: `${need} need` },
         ]
 
@@ -428,7 +432,7 @@ export default function Onboarding() {
 
           {step === 2 && (
             <div>
-              <h2 className="font-display text-2xl font-bold text-ink-900">Origin & region</h2>
+              <h2 className="font-display text-2xl font-bold text-ink-900">Your background</h2>
               <p className="mt-1 text-ink-500">
                 District schemes prioritise indigenes, so this unlocks local awards.
               </p>
@@ -459,6 +463,35 @@ export default function Onboarding() {
                   className={inputCls}
                 />
               </Field>
+
+              <label className="mb-2 mt-6 block text-sm font-semibold text-ink-700">Gender</label>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {['Female', 'Male', 'Prefer not to say'].map((g) => (
+                  <button
+                    key={g}
+                    onClick={() => setGender(g)}
+                    className={cn(
+                      'rounded-xl border px-3 py-2.5 text-sm font-medium transition',
+                      gender === g
+                        ? 'border-brand-600 bg-brand-50 text-brand-700'
+                        : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300',
+                    )}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-ink-500">
+                A number of funders run women-only scholarships, especially in STEM and leadership.
+                Telling us lets the matcher surface those instead of hiding them.
+              </p>
+              {gender === 'Prefer not to say' && (
+                <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  That is completely fine. Awards restricted to one gender will show as
+                  &ldquo;confirm eligibility&rdquo; rather than a definite match, since we cannot
+                  verify that criterion for you.
+                </p>
+              )}
             </div>
           )}
 

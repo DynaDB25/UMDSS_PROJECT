@@ -17,24 +17,46 @@ import {
   Building2,
   AlertTriangle,
   ExternalLink,
+  FileDown,
+  Send,
 } from 'lucide-react'
 import { Card, StatusPill, ScoreRing, Badge, Progress } from '../components/ui'
 import { ScholarshipLogo } from '../components/ScholarshipLogo'
+import { useAuth } from '../contexts/AuthContext'
+import { downloadPdf } from '../lib/exportDoc'
 import { daysUntil, formatDeadline } from '../data/mock'
 import { cn } from '../lib/cn'
+
+type DocType = { key: string; label: string; category: string; keywords: string[] }
+
+/** Mirror of the backend's requirement matcher so the UI predicts exactly what
+ *  the server will auto-attach when the student applies. */
+function matchRequirement(text: string, types: DocType[]): string | null {
+  const t = ` ${(text || '').toLowerCase()} `
+  for (const d of types) {
+    for (const kw of d.keywords || []) {
+      if (kw && t.includes(kw)) return d.key
+    }
+  }
+  return null
+}
 
 export default function ScholarshipDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
 
+  const { user } = useAuth()
   const [s, setS] = useState<Scholarship | null>(null)
   const [match, setMatch] = useState<MatchResult | null>(null)
   const [documents, setDocuments] = useState<VaultDocument[]>([])
+  const [docTypes, setDocTypes] = useState<DocType[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [applying, setApplying] = useState(false)
-  const [applied, setApplied] = useState(false)
   const [applyError, setApplyError] = useState('')
+  // The tracked application for this scholarship, once one exists.
+  const [application, setApplication] = useState<any | null>(null)
+  const [marking, setMarking] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -43,17 +65,19 @@ export default function ScholarshipDetail() {
       try {
         // Fetch the scholarship directly by id — the detail page must work for
         // ANY scholarship, not only ones the student already has a match for.
-        const [scholarship, matches, docs, apps] = await Promise.all([
+        const [scholarship, matches, docs, apps, ref] = await Promise.all([
           api.scholarships.get(id!),
           api.matches.list().catch(() => [] as MatchResult[]),
           api.documents.list().catch(() => [] as VaultDocument[]),
           api.applications.list().catch(() => [] as any[]),
+          api.reference().catch(() => ({ documentTypes: [] as DocType[] } as any)),
         ])
         if (cancelled) return
         setS(scholarship)
         setMatch(matches.find((m) => m.scholarship.id === id) || null)
         setDocuments(docs)
-        setApplied(apps.some((a) => a.scholarshipId === id))
+        setDocTypes(ref?.documentTypes || [])
+        setApplication(apps.find((a) => a.scholarshipId === id) || null)
       } catch {
         if (!cancelled) setLoadError('We couldn’t load this scholarship. It may have closed or been removed.')
       } finally {
@@ -84,23 +108,91 @@ export default function ScholarshipDetail() {
     setApplying(true)
     setApplyError('')
     try {
-      await api.applications.create(s.id)
-      setApplied(true)
+      const app = await api.applications.create(s.id)
+      setApplication(app)
     } catch (err: any) {
-      setApplyError(err?.message || 'Could not submit your application. Please try again.')
+      setApplyError(err?.message || 'Could not start your application. Please try again.')
     } finally {
       setApplying(false)
     }
   }
 
-  const haveDoc = (name: string) =>
-    documents.some(
-      (doc) =>
-        doc.status === 'Verified' &&
-        name.toLowerCase().includes(doc.name.split('(')[0].trim().toLowerCase().split(' ')[0]),
+  const handleMarkSubmitted = async () => {
+    if (!application) return
+    setMarking(true)
+    try {
+      const updated = await api.applications.markSubmitted(String(application.id).replace('app-', ''))
+      setApplication(updated)
+    } catch (err: any) {
+      setApplyError(err?.message || 'Could not update your application.')
+    } finally {
+      setMarking(false)
+    }
+  }
+
+  // Which required documents do we actually hold, matched by type the same way
+  // the server does when it auto-attaches them.
+  const requirements = (s.documents || []).map((req) => {
+    const key = matchRequirement(req, docTypes)
+    const doc = key ? documents.find((d: any) => d.docType === key) : undefined
+    return { req, key, doc }
+  })
+  const haveCount = requirements.filter((r) => r.doc).length
+  const missing = requirements.filter((r) => !r.doc)
+
+  // A printable pack the student can take to the funder's own form.
+  const downloadPack = () => {
+    const p: any = user?.profile || {}
+    const lines: string[] = [
+      `# ${s.name}`,
+      `**Provider:** ${s.provider}`,
+      `**Award:** ${s.amount}`,
+      `**Deadline:** ${formatDeadline(s.deadline)}`,
+      s.applicationUrl ? `**Apply at:** ${s.applicationUrl}` : '',
+      s.applicationEmail ? `**Send to:** ${s.applicationEmail}` : '',
+      '',
+      '## Applicant details',
+      `**Full name:** ${[user?.first_name, user?.last_name].filter(Boolean).join(' ')}`,
+      `**Email:** ${user?.email || ''}`,
+      p.phone ? `**Phone:** ${p.phone}` : '',
+      p.student_type ? `**Student type:** ${p.student_type}` : '',
+      p.institution ? `**Institution:** ${p.institution}` : '',
+      p.shs_school ? `**Senior high school:** ${p.shs_school}` : '',
+      p.programme ? `**Programme:** ${p.programme}` : '',
+      p.university_level ? `**Level:** ${p.university_level}` : '',
+      p.academic_standing ? `**Academic standing:** ${p.academic_standing}` : '',
+      p.wassce_aggregate != null ? `**WASSCE aggregate:** ${p.wassce_aggregate}` : '',
+      p.region ? `**Home region:** ${p.region}` : '',
+      p.home_district ? `**Home district:** ${p.home_district}` : '',
+      p.gender ? `**Gender:** ${p.gender}` : '',
+      p.need_level ? `**Financial need:** ${p.need_level}` : '',
+      '',
+      '## Document checklist',
+    ]
+    if (requirements.length === 0) {
+      lines.push('This funder did not publish a document list. Confirm requirements on their site.')
+    } else {
+      for (const r of requirements) {
+        lines.push(r.doc ? `- [READY] ${r.req} (in your vault as "${r.doc.name}")` : `- [MISSING] ${r.req}`)
+      }
+    }
+    lines.push(
+      '',
+      '## Next steps',
+      '1. Download your documents from the ScholarCircle vault.',
+      s.applicationUrl
+        ? `2. Open the provider form at ${s.applicationUrl} and fill it with the details above.`
+        : '2. Open the provider website and fill their form with the details above.',
+      '3. Attach every document on the checklist.',
+      '4. Submit to the provider, then mark it submitted in ScholarCircle to track it.',
+      '',
+      'Prepared by ScholarCircle. Always confirm requirements and deadlines with the provider.',
     )
+    downloadPdf(`${s.name} application pack`, lines.filter(Boolean).join('\n'))
+  }
 
   const metCount = match ? match.criteria.filter((c) => c.met).length : 0
+  const applyLink = s.applicationUrl || s.sourceUrl
 
   return (
     <div className="space-y-6">
@@ -128,6 +220,12 @@ export default function ScholarshipDetail() {
                     <Building2 className="h-4 w-4" /> {s.provider}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-1.5">
+                    {s.genderScope && s.genderScope !== 'any' && (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-gold-400/90 px-2 py-0.5 text-xs font-bold text-ink-900">
+                        <Users className="h-3 w-3" />
+                        {s.genderScope === 'female' ? 'Women only' : 'Men only'}
+                      </span>
+                    )}
                     {s.tags.map((t) => (
                       <span key={t} className="rounded-md bg-white/15 px-2 py-0.5 text-xs font-medium backdrop-blur">
                         {t}
@@ -266,29 +364,39 @@ export default function ScholarshipDetail() {
               )}
             </div>
 
-            {/* Required docs */}
-            {s.documents.length > 0 && (
+            {/* Required docs, matched against the vault by type */}
+            {requirements.length > 0 && (
               <div className="mt-6">
-                <h3 className="text-sm font-semibold text-ink-900">Required documents</h3>
-                <div className="mt-3 space-y-2">
-                  {s.documents.map((doc) => {
-                    const have = haveDoc(doc)
-                    return (
-                      <div key={doc} className="flex items-center gap-2.5 text-sm">
-                        <div
-                          className={cn(
-                            'grid h-6 w-6 shrink-0 place-items-center rounded-md',
-                            have ? 'bg-emerald-100 text-emerald-600' : 'bg-ink-100 text-ink-400',
-                          )}
-                        >
-                          <FileCheck className="h-3.5 w-3.5" />
-                        </div>
-                        <span className={cn('flex-1', have ? 'text-ink-700' : 'text-ink-500')}>{doc}</span>
-                        {have ? <Badge tone="green">In vault</Badge> : <Badge tone="ink">Needed</Badge>}
-                      </div>
-                    )
-                  })}
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-ink-900">Required documents</h3>
+                  <span className={cn('text-xs font-semibold', haveCount === requirements.length ? 'text-emerald-600' : 'text-amber-600')}>
+                    {haveCount}/{requirements.length} ready
+                  </span>
                 </div>
+                <div className="mt-3 space-y-2">
+                  {requirements.map((r) => (
+                    <div key={r.req} className="flex items-center gap-2.5 text-sm">
+                      <div
+                        className={cn(
+                          'grid h-6 w-6 shrink-0 place-items-center rounded-md',
+                          r.doc ? 'bg-emerald-100 text-emerald-600' : 'bg-ink-100 text-ink-400',
+                        )}
+                      >
+                        <FileCheck className="h-3.5 w-3.5" />
+                      </div>
+                      <span className={cn('flex-1', r.doc ? 'text-ink-700' : 'text-ink-500')}>{r.req}</span>
+                      {r.doc ? <Badge tone="green">In vault</Badge> : <Badge tone="ink">Needed</Badge>}
+                    </div>
+                  ))}
+                </div>
+                {missing.length > 0 && (
+                  <Link
+                    to="/app/vault"
+                    className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700"
+                  >
+                    Upload the {missing.length} missing document{missing.length > 1 ? 's' : ''} →
+                  </Link>
+                )}
               </div>
             )}
 
@@ -296,37 +404,104 @@ export default function ScholarshipDetail() {
               <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{applyError}</p>
             )}
 
-            {applied ? (
+            {application ? (
               <motion.div
-                initial={{ scale: 0.95, opacity: 0 }}
+                initial={{ scale: 0.98, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className="mt-6 rounded-xl bg-emerald-50 p-4 text-center"
+                className="mt-6 space-y-3"
               >
-                <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
-                <p className="mt-2 font-semibold text-emerald-800">Application submitted</p>
-                <p className="text-sm text-emerald-600">It’s now in your tracker and the review team has been notified.</p>
-                <Link to="/app/applications" className="mt-3 inline-block text-sm font-semibold text-brand-600">
-                  Track application →
+                {application.status === 'Draft' ? (
+                  <>
+                    <div className="rounded-xl bg-brand-50 p-4">
+                      <p className="font-semibold text-brand-900">Your application pack is ready</p>
+                      <p className="mt-1 text-sm text-brand-700">
+                        {requirements.length > 0
+                          ? `${haveCount} of ${requirements.length} required documents are in your vault.`
+                          : 'This funder did not publish a document list.'}
+                      </p>
+                      <p className="mt-2 text-sm text-brand-700">
+                        ScholarCircle does not submit on your behalf. Finish on {s.provider}&apos;s own
+                        form, then mark it submitted here so we can track it.
+                      </p>
+                    </div>
+
+                    {applyLink && (
+                      <a
+                        href={applyLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-3.5 font-semibold text-white shadow-sm hover:bg-brand-700"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        {s.applicationUrl ? 'Open the application form' : 'Open the provider listing'}
+                      </a>
+                    )}
+
+                    {s.applicationEmail && (
+                      <a
+                        href={`mailto:${s.applicationEmail}?subject=${encodeURIComponent(`Scholarship application: ${s.name}`)}`}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-ink-200 py-2.5 text-sm font-semibold text-ink-700 hover:border-brand-300 hover:text-brand-700"
+                      >
+                        <Send className="h-4 w-4" /> Email {s.applicationEmail}
+                      </a>
+                    )}
+
+                    <button
+                      onClick={downloadPack}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-ink-200 py-2.5 text-sm font-semibold text-ink-700 hover:border-brand-300 hover:text-brand-700"
+                    >
+                      <FileDown className="h-4 w-4" /> Download application pack (PDF)
+                    </button>
+
+                    <button
+                      onClick={handleMarkSubmitted}
+                      disabled={marking}
+                      className="w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {marking ? 'Saving…' : 'I have submitted this'}
+                    </button>
+                  </>
+                ) : (
+                  <div className="rounded-xl bg-emerald-50 p-4 text-center">
+                    <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
+                    <p className="mt-2 font-semibold text-emerald-800">Marked as submitted</p>
+                    <p className="text-sm text-emerald-600">
+                      Submitted on {application.submittedOn}. We will keep it in your tracker.
+                    </p>
+                  </div>
+                )}
+
+                <Link
+                  to="/app/applications"
+                  className="block text-center text-sm font-semibold text-brand-600 hover:text-brand-700"
+                >
+                  Track this application →
                 </Link>
               </motion.div>
             ) : (
-              <button
-                onClick={handleApply}
-                disabled={applying}
-                className="mt-6 w-full rounded-xl bg-brand-600 py-3.5 font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
-              >
-                {applying ? 'Submitting…' : 'Apply now'}
-              </button>
-            )}
-            {s.sourceUrl && (
-              <a
-                href={s.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-ink-200 py-2.5 text-sm font-semibold text-ink-600 hover:border-brand-300 hover:text-brand-700"
-              >
-                <ExternalLink className="h-4 w-4" /> View original listing
-              </a>
+              <>
+                <button
+                  onClick={handleApply}
+                  disabled={applying}
+                  className="mt-6 w-full rounded-xl bg-brand-600 py-3.5 font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {applying ? 'Preparing…' : 'Start my application'}
+                </button>
+                <p className="mt-2 text-center text-xs text-ink-500">
+                  We build your pack and attach your vault documents, then hand you straight to{' '}
+                  {s.provider}.
+                </p>
+                {s.sourceUrl && (
+                  <a
+                    href={s.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-ink-200 py-2.5 text-sm font-semibold text-ink-600 hover:border-brand-300 hover:text-brand-700"
+                  >
+                    <ExternalLink className="h-4 w-4" /> View original listing
+                  </a>
+                )}
+              </>
             )}
             <p className="mt-3 text-center text-xs text-ink-400">
               No application fee · Documents stay encrypted
