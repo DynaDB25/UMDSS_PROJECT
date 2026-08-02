@@ -17,7 +17,7 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -48,3 +48,22 @@ jobs:
           python manage.py run_scraper
           # 3) drop anything whose deadline has passed
           python manage.py purge_expired
+
+      # Work out how students actually apply to each scholarship, so the app has
+      # a real application form ready instead of crawling while someone waits.
+      # Runs after the purge so we never crawl a listing we just deleted.
+      #
+      # Isolated deliberately: this makes outbound requests to many third-party
+      # sites, so it is capped and allowed to fail. Scraping is the job that
+      # matters, and a slow or unreachable provider must not fail the workflow
+      # or block the scholarships that were already written.
+      - name: Discover application forms
+        working-directory: UMDSS/UMDSS
+        timeout-minutes: 12
+        continue-on-error: true
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # Hits are cached forever and misses back off a week, so this steadily
+          # works through the catalogue rather than re-crawling the same rows.
+          python manage.py discover_forms --limit 80
