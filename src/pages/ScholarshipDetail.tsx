@@ -25,6 +25,7 @@ import { Card, StatusPill, ScoreRing, Badge, Progress } from '../components/ui'
 import { ScholarshipLogo } from '../components/ScholarshipLogo'
 import { useAuth } from '../contexts/AuthContext'
 import { downloadPdf } from '../lib/exportDoc'
+import { classifyApplyRoute } from '../lib/applyForm'
 import { daysUntil, formatDeadline } from '../data/mock'
 import { cn } from '../lib/cn'
 
@@ -211,7 +212,39 @@ export default function ScholarshipDetail() {
   }
 
   const metCount = match ? match.criteria.filter((c) => c.met).length : 0
-  const applyLink = s.applicationUrl || s.sourceUrl
+  const applyRoute = classifyApplyRoute(s.applicationUrl, s.sourceUrl, s.applicationEmail)
+
+  // A ready-to-send application email for funders who accept one, with the
+  // student's details already written out so they only attach their documents.
+  const emailHref = (() => {
+    if (!applyRoute.email) return ''
+    const p: any = user?.profile || {}
+    const name = [user?.first_name, user?.last_name].filter(Boolean).join(' ')
+    const body = [
+      'Dear Scholarship Committee,',
+      '',
+      `I am applying for the ${s.name}.`,
+      '',
+      `Full name: ${name}`,
+      `Email: ${user?.email || ''}`,
+      p.phone ? `Phone: ${p.phone}` : '',
+      p.institution || p.shs_school ? `Institution: ${p.institution || p.shs_school}` : '',
+      p.programme ? `Programme: ${p.programme}` : '',
+      p.university_level ? `Level: ${p.university_level}` : '',
+      p.wassce_aggregate != null ? `WASSCE aggregate: ${p.wassce_aggregate}` : '',
+      p.region ? `Home region: ${p.region}${p.home_district ? `, ${p.home_district}` : ''}` : '',
+      '',
+      'I have attached the documents listed in your requirements:',
+      ...requirements.map((r) => `  - ${r.req}`),
+      '',
+      'Thank you for your consideration.',
+      '',
+      name,
+    ].filter(Boolean).join('\n')
+    return `mailto:${applyRoute.email}?subject=${encodeURIComponent(
+      `Scholarship application: ${s.name}`,
+    )}&body=${encodeURIComponent(body)}`
+  })()
 
   return (
     <div className="space-y-6">
@@ -300,6 +333,55 @@ export default function ScholarshipDetail() {
               )}
             </div>
           </Card>
+
+          {/* The provider's own form, embedded when they use a platform that
+              supports it. The student fills and submits it here themselves. */}
+          {application && applyRoute.embedUrl && (
+            <Card className="overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-200/70 p-5 sm:p-6">
+                <div>
+                  <h2 className="font-display text-lg font-bold text-ink-900">
+                    Apply to {s.provider}
+                  </h2>
+                  <p className="text-sm text-ink-500">
+                    This is {s.provider}&apos;s own form. Fill it in and submit it below, then mark
+                    it submitted so we can track it.
+                  </p>
+                </div>
+                <a
+                  href={applyRoute.externalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-semibold text-ink-600 hover:border-brand-300 hover:text-brand-700"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> Open in a new tab
+                </a>
+              </div>
+
+              {haveCount > 0 && (
+                <div className="flex flex-wrap items-center gap-2 border-b border-ink-200/70 bg-brand-50/60 px-5 py-3 sm:px-6">
+                  <p className="flex-1 text-sm text-brand-800">
+                    Need to upload files into the form? Grab your {haveCount} vault document
+                    {haveCount > 1 ? 's' : ''} first.
+                  </p>
+                  <button
+                    onClick={handleDownloadDocs}
+                    disabled={zipping}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-ink-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-ink-900 disabled:opacity-50"
+                  >
+                    <FolderDown className="h-3.5 w-3.5" /> {zipping ? 'Preparing…' : 'Download ZIP'}
+                  </button>
+                </div>
+              )}
+
+              <iframe
+                src={applyRoute.embedUrl}
+                title={`${s.name} application form`}
+                className="h-[720px] w-full border-0"
+                loading="lazy"
+              />
+            </Card>
+          )}
 
           {/* Eligibility breakdown — only when we actually have a match */}
           {match ? (
@@ -444,24 +526,36 @@ export default function ScholarshipDetail() {
                       </p>
                     </div>
 
-                    {applyLink && (
-                      <a
-                        href={applyLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-3.5 font-semibold text-white shadow-sm hover:bg-brand-700"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        {s.applicationUrl ? 'Open the application form' : 'Open the provider listing'}
-                      </a>
+                    {/* Embedded form lives in the main column, so point at it */}
+                    {applyRoute.embedUrl ? (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center">
+                        <p className="text-sm font-semibold text-emerald-800">
+                          The application form is open below
+                        </p>
+                        <p className="mt-0.5 text-xs text-emerald-700">
+                          Fill it in on this page, then come back here and mark it submitted.
+                        </p>
+                      </div>
+                    ) : (
+                      applyRoute.externalUrl && (
+                        <a
+                          href={applyRoute.externalUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-3.5 font-semibold text-white shadow-sm hover:bg-brand-700"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          {s.applicationUrl ? 'Open the application form' : 'Open the provider listing'}
+                        </a>
+                      )
                     )}
 
-                    {s.applicationEmail && (
+                    {emailHref && (
                       <a
-                        href={`mailto:${s.applicationEmail}?subject=${encodeURIComponent(`Scholarship application: ${s.name}`)}`}
+                        href={emailHref}
                         className="flex w-full items-center justify-center gap-2 rounded-xl border border-ink-200 py-2.5 text-sm font-semibold text-ink-700 hover:border-brand-300 hover:text-brand-700"
                       >
-                        <Send className="h-4 w-4" /> Email {s.applicationEmail}
+                        <Send className="h-4 w-4" /> Email my application
                       </a>
                     )}
 
@@ -518,8 +612,9 @@ export default function ScholarshipDetail() {
                   {applying ? 'Preparing…' : 'Start my application'}
                 </button>
                 <p className="mt-2 text-center text-xs text-ink-500">
-                  We build your pack and attach your vault documents, then hand you straight to{' '}
-                  {s.provider}.
+                  {applyRoute.embedUrl
+                    ? `We attach your vault documents and open ${s.provider}'s form right here on this page.`
+                    : `We build your pack and attach your vault documents, then hand you straight to ${s.provider}.`}
                 </p>
                 {s.sourceUrl && (
                   <a
