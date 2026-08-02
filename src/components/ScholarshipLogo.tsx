@@ -66,13 +66,11 @@ export function ScholarshipLogo({
   name,
   provider,
   initials,
-  color,
   className,
 }: {
   name?: string
   provider?: string
   initials: string
-  color: string
   className?: string
 }) {
   const sources = useMemo(() => {
@@ -87,14 +85,14 @@ export function ScholarshipLogo({
     return (
       <div
         className={cn(
-          'grid shrink-0 place-items-center overflow-hidden rounded-xl bg-white ring-1 ring-ink-200/60',
+          'grid shrink-0 place-items-center overflow-hidden rounded-sm border border-rule bg-white',
           className,
         )}
       >
         <img
           src={sources[idx]}
           alt={name || initials}
-          className="h-[70%] w-[70%] object-contain"
+          className="h-[68%] w-[68%] object-contain"
           loading="lazy"
           onError={() => setIdx((i) => i + 1)}
         />
@@ -102,14 +100,14 @@ export function ScholarshipLogo({
     )
   }
 
-  // Fallback: colored tile with initials
+  // Fallback: initials on an ink tile.
   return (
     <div
       className={cn(
-        'grid shrink-0 place-items-center rounded-xl font-semibold text-white',
-        color,
+        'grid shrink-0 place-items-center rounded-sm bg-ink font-display text-[0.8125rem] font-bold uppercase tracking-tight text-canvas',
         className,
       )}
+      aria-hidden
     >
       {initials}
     </div>

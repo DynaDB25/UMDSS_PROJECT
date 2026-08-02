@@ -9,6 +9,8 @@
     "eject": "react-scripts eject"
   },
   "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "framer-motion": "^11.11.17",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.456.0",
@@ -17,6 +19,7 @@
     "react-router-dom": "^6.28.0",
     "react-scripts": "5.0.1",
     "recharts": "^2.13.3",
+    "tailwind-merge": "^3.6.0",
     "typescript": "^4.9.5"
   },
   "devDependencies": {

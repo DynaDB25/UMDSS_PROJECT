@@ -7,22 +7,37 @@ import {
   Wallet,
   CalendarClock,
   ArrowRight,
-  ArrowUpRight,
-  CheckCircle2,
   AlertTriangle,
   Bot,
-  FileText,
+  BellRing,
+  Inbox,
 } from 'lucide-react'
-import { Card, Avatar, StatusPill, Progress, ScoreRing } from '../components/ui'
+import {
+  ButtonLink,
+  Card,
+  EmptyState,
+  Progress,
+  ScoreRing,
+  SectionLabel,
+  Stat,
+  StatRow,
+  StatusPill,
+} from '../components/ui'
 import { ScholarshipLogo } from '../components/ScholarshipLogo'
+import { DashboardSkeleton } from '../components/skeletons'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../api/endpoints'
-import {
-  daysUntil,
-  formatDeadline,
-} from '../data/mock'
+import { daysUntil, formatDeadline } from '../data/mock'
 import type { MatchResult, Application, Scholarship, AppNotification } from '../data/types'
 import { cn } from '../lib/cn'
+import { fadeUp, listItem, stagger } from '../lib/motion'
+
+function greeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
+}
 
 export default function Dashboard() {
   const { user } = useAuth()
@@ -34,21 +49,24 @@ export default function Dashboard() {
 
   useEffect(() => {
     Promise.all([
-      api.matches.list(),
-      api.scholarships.list(),
-      api.applications.list(),
-      api.notifications.list(),
-    ]).then(([m, s, a, n]) => {
-      setMatches(m)
-      setScholarships(s)
-      setApplications(a)
-      setNotifications(n)
-    }).finally(() => setLoading(false))
+      api.matches.list().catch(() => []),
+      api.scholarships.list().catch(() => []),
+      api.applications.list().catch(() => []),
+      api.notifications.list().catch(() => []),
+    ])
+      .then(([m, s, a, n]) => {
+        setMatches(m)
+        setScholarships(s)
+        setApplications(a)
+        setNotifications(n)
+      })
+      .finally(() => setLoading(false))
   }, [])
 
-  if (loading || !user) return <div className="p-8 text-center text-ink-500">Loading dashboard...</div>
+  if (loading || !user) return <DashboardSkeleton />
 
-  const eligible = matches.filter((m: MatchResult) => m.status !== 'Not eligible')
+  const eligible = matches.filter((m) => m.status !== 'Not eligible')
+  const strong = eligible.filter((m) => m.status === 'Strong match').length
   const topMatches = [...eligible].sort((a, b) => b.score - a.score).slice(0, 3)
   // Only scholarships with a stated, unexpired deadline belong in a
   // "closing soon" rail — null deadlines mean the provider doesn't publish one.
@@ -58,237 +76,338 @@ export default function Dashboard() {
     .slice(0, 4)
   const funding = eligible.reduce((sum, m) => sum + (m.scholarship.amountValue || 0), 0)
   const fundingLabel = funding >= 1000 ? `GH₵ ${Math.round(funding / 1000)}k` : `GH₵ ${funding}`
-
-  const stats = [
-    { label: 'Eligible matches', value: String(eligible.length), sub: `${eligible.filter((m: MatchResult) => m.status === 'Strong match').length} strong`, icon: Sparkles, tone: 'bg-brand-50 text-brand-700' },
-    { label: 'Active applications', value: String(applications.length), sub: `${applications.filter((a: Application) => a.status === 'Interview').length} in interview`, icon: ClipboardList, tone: 'bg-violet-50 text-violet-700' },
-    { label: 'Potential funding', value: fundingLabel, sub: 'across matches', icon: Wallet, tone: 'bg-emerald-50 text-emerald-700' },
-    { label: 'Next deadline', value: upcoming.length > 0 ? `${daysUntil(upcoming[0].deadline)} days` : 'N/A', sub: upcoming.length > 0 ? upcoming[0].name : '', icon: CalendarClock, tone: 'bg-amber-50 text-amber-700' },
-  ]
+  const interviews = applications.filter((a) => a.status === 'Interview').length
+  const completion = Math.max(0, Math.min(100, Math.round(user.profile?.profile_completion ?? 0)))
 
   return (
-    <div className="space-y-6">
-      {/* Greeting hero */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-700 to-brand-900 p-6 text-white sm:p-8"
+    <div className="space-y-10">
+      {/* ---------------- Greeting band ---------------- */}
+      <motion.section
+        initial="hidden"
+        animate="show"
+        variants={fadeUp}
+        className="rounded-md bg-band px-5 py-6 sm:px-7 sm:py-8"
       >
-        <div className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-white/5" />
-        <div className="absolute -bottom-20 right-24 h-52 w-52 rounded-full bg-gold-500/10" />
-        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm text-brand-200">Good morning,</p>
-            <h1 className="mt-1 font-display text-2xl font-extrabold sm:text-3xl">
-              {user.first_name} {user.last_name} 👋
+        <div className="flex flex-col gap-7 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <p className="t-overline text-accent">{greeting()}</p>
+            <h1 className="t-display-md mt-2 text-balance text-band-on">
+              {user.first_name} {user.last_name}
             </h1>
-            <p className="mt-2 max-w-md text-sm text-brand-100">
-              Your profile is <span className="font-semibold text-gold-300">{user.profile?.profile_completion || 0}% complete</span>.
-              {(() => {
-                const n = applications.filter((a: Application) => a.status === 'Interview').length
-                return n > 0 ? ` You have ${n} interview${n > 1 ? 's' : ''} coming up.` : ''
-              })()}
+            <p className="t-body mt-3 max-w-md text-band-muted">
+              {eligible.length > 0
+                ? `You qualify for ${eligible.length} award${eligible.length > 1 ? 's' : ''} right now.`
+                : 'Complete your profile and the matching engine will start ranking awards for you.'}
+              {interviews > 0 &&
+                ` You have ${interviews} interview${interviews > 1 ? 's' : ''} coming up.`}
             </p>
-            <div className="mt-4 flex flex-wrap gap-2.5">
-              <Link
-                to="/app/matches"
-                className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-brand-800 transition hover:bg-brand-50"
-              >
-                <Sparkles className="h-4 w-4" /> View matches
-              </Link>
-              <Link
-                to="/app/assistant"
-                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/20"
-              >
-                <Bot className="h-4 w-4" /> Ask the bot
-              </Link>
+
+            <div className="mt-6 flex flex-wrap gap-2.5">
+              <ButtonLink to="/app/scholarships" variant="accent" icon={<Sparkles className="h-4 w-4" />}>
+                View my matches
+              </ButtonLink>
+              <ButtonLink to="/app/assistant" variant="onBand" icon={<Bot className="h-4 w-4" />}>
+                Ask the bot
+              </ButtonLink>
             </div>
           </div>
 
-          <div className="flex items-center gap-4 rounded-2xl bg-white/10 p-4 backdrop-blur">
-            <div className="relative grid place-items-center">
-              <svg width="72" height="72" className="-rotate-90">
-                <circle cx="36" cy="36" r="30" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="6" />
-                <circle
-                  cx="36"
-                  cy="36"
-                  r="30"
-                  fill="none"
-                  stroke="#fbbf24"
-                  strokeWidth="6"
-                  strokeDasharray={2 * Math.PI * 30}
-                  strokeDashoffset={2 * Math.PI * 30 * (1 - 0.92)}
-                  strokeLinecap="round"
-                />
-              </svg>
-              <span className="absolute font-display text-lg font-bold">{user.profile?.profile_completion || 92}%</span>
-            </div>
-            <div className="text-sm">
-              <p className="font-semibold">Profile strength</p>
-              <p className="text-brand-200">Add a leadership essay</p>
-              <Link to="/app/settings" className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-gold-300">
-                Complete now <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Stat cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((s, i) => (
-          <motion.div
-            key={s.label}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: i * 0.05 }}
-          >
-            <Card className="p-5">
-              <div className="flex items-start justify-between">
-                <div className={cn('grid h-10 w-10 place-items-center rounded-xl', s.tone)}>
-                  <s.icon className="h-5 w-5" />
-                </div>
-                <ArrowUpRight className="h-4 w-4 text-ink-300" />
-              </div>
-              <p className="mt-4 font-display text-2xl font-extrabold text-ink-900">{s.value}</p>
-              <p className="text-sm text-ink-500">{s.label}</p>
-              <p className="mt-1 text-xs font-medium text-ink-400">{s.sub}</p>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Top matches */}
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="p-5 sm:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-display text-lg font-bold text-ink-900">Top scholarship matches</h2>
-                <p className="text-sm text-ink-500">Ranked by how well your profile fits</p>
-              </div>
-              <Link to="/app/matches" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
-                See all
-              </Link>
-            </div>
-
-            <div className="mt-5 space-y-3">
-              {topMatches.map((m: MatchResult) => (
+          {/* Profile strength — the real value, not a decorative arc */}
+          <div className="flex shrink-0 items-center gap-5 border-t border-band-rule pt-6 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+            <ScoreRing score={completion} size={72} className="[&_span]:text-band-on" />
+            <div className="min-w-0">
+              <p className="t-overline text-band-muted">Profile strength</p>
+              <p className="t-body mt-1.5 max-w-[16rem] text-band-on">
+                {completion >= 100
+                  ? 'Your profile is complete.'
+                  : 'A fuller profile unlocks more matches.'}
+              </p>
+              {completion < 100 && (
                 <Link
-                  key={m.scholarship.id}
-                  to={`/app/matches/${m.scholarship.id}`}
-                  className="group flex items-center gap-4 rounded-xl border border-ink-200/70 p-3.5 transition hover:border-brand-300 hover:bg-brand-50/40"
+                  to="/app/settings"
+                  className="t-sm mt-2 inline-flex items-center gap-1.5 font-semibold text-accent underline underline-offset-4"
                 >
-                  <ScholarshipLogo name={m.scholarship.name} provider={m.scholarship.provider} initials={m.scholarship.initials} color={m.scholarship.logoColor} className="h-12 w-12 rounded-xl text-sm" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate font-semibold text-ink-900">{m.scholarship.name}</p>
-                      <StatusPill status={m.status} />
-                    </div>
-                    <p className="truncate text-sm text-ink-500">{m.scholarship.provider}</p>
-                    <p className="mt-0.5 text-sm font-medium text-emerald-700">{m.scholarship.amount}</p>
-                  </div>
-                  <div className="hidden sm:block">
-                    <ScoreRing score={m.score} />
-                  </div>
-                  <ArrowRight className="h-5 w-5 text-ink-300 transition group-hover:translate-x-0.5 group-hover:text-brand-600" />
+                  Complete it now
+                  <ArrowRight className="h-3.5 w-3.5" aria-hidden />
                 </Link>
-              ))}
+              )}
             </div>
-          </Card>
+          </div>
+        </div>
+      </motion.section>
 
-          {/* Active applications */}
-          <Card className="p-5 sm:p-6">
-            <div className="flex items-center justify-between">
-              <h2 className="font-display text-lg font-bold text-ink-900">Application progress</h2>
-              <Link to="/app/applications" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
-                Manage
-              </Link>
-            </div>
-            <div className="mt-5 space-y-4">
-              {applications.slice(0, 3).map((a: Application) => (
-                <div key={a.id} className="flex items-center gap-4">
-                  <ScholarshipLogo name={a.scholarshipName} provider={a.provider} initials={a.initials} color={a.logoColor} className="h-10 w-10 rounded-xl text-xs" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-semibold text-ink-800">{a.scholarshipName}</p>
-                      <StatusPill status={a.status} />
-                    </div>
-                    <div className="mt-2 flex items-center gap-3">
-                      <Progress value={a.progress} className="flex-1" tone={a.status === 'Interview' ? 'gold' : 'brand'} />
-                      <span className="text-xs font-medium text-ink-400">{a.progress}%</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
+      {/* ---------------- Stats ---------------- */}
+      <StatRow>
+        <Stat
+          label="Eligible matches"
+          value={eligible.length}
+          detail={`${strong} strong`}
+          icon={<Sparkles />}
+        />
+        <Stat
+          label="Active applications"
+          value={applications.length}
+          detail={interviews > 0 ? `${interviews} in interview` : 'None in interview'}
+          icon={<ClipboardList />}
+        />
+        <Stat
+          label="Potential funding"
+          value={fundingLabel}
+          detail="Across your matches"
+          tone="accent"
+          icon={<Wallet />}
+        />
+        <Stat
+          label="Next deadline"
+          value={upcoming.length > 0 ? `${daysUntil(upcoming[0].deadline)}d` : '—'}
+          detail={upcoming.length > 0 ? upcoming[0].name : 'Nothing scheduled'}
+          icon={<CalendarClock />}
+        />
+      </StatRow>
+
+      <div className="grid gap-8 lg:grid-cols-3">
+        {/* ---------------- Main column ---------------- */}
+        <div className="space-y-8 lg:col-span-2">
+          <section>
+            <SectionLabel
+              action={
+                <Link
+                  to="/app/scholarships"
+                  className="t-sm font-semibold text-ink underline underline-offset-4 hover:text-accent"
+                >
+                  See all
+                </Link>
+              }
+            >
+              Top matches
+            </SectionLabel>
+
+            {topMatches.length > 0 ? (
+              <motion.div
+                initial="hidden"
+                animate="show"
+                variants={stagger(0.05, 0.05)}
+                className="rule-list mt-3 overflow-hidden rounded-md border border-rule bg-surface"
+              >
+                {topMatches.map((m) => (
+                  <motion.div key={m.scholarship.id} variants={listItem}>
+                    <Link
+                      to={`/app/scholarships/${m.scholarship.id}`}
+                      className="group flex items-center gap-4 px-4 py-4 transition-colors hover:bg-surface-sunken sm:px-5"
+                    >
+                      <ScholarshipLogo
+                        name={m.scholarship.name}
+                        provider={m.scholarship.provider}
+                        initials={m.scholarship.initials}
+                        className="h-11 w-11"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate font-display text-[0.9375rem] font-bold tracking-tight text-ink transition-colors group-hover:text-accent">
+                            {m.scholarship.name}
+                          </p>
+                          <StatusPill status={m.status} />
+                        </div>
+                        <p className="t-sm mt-0.5 truncate text-ink-muted">
+                          {m.scholarship.provider}
+                        </p>
+                        <p className="tabular t-sm mt-1 font-bold text-ink">{m.scholarship.amount}</p>
+                      </div>
+                      <ScoreRing score={m.score} size={48} className="hidden sm:grid" />
+                      <ArrowRight
+                        className="h-4 w-4 shrink-0 text-ink-faint transition-all group-hover:translate-x-0.5 group-hover:text-ink"
+                        aria-hidden
+                      />
+                    </Link>
+                  </motion.div>
+                ))}
+              </motion.div>
+            ) : (
+              <EmptyState
+                className="mt-3"
+                icon={<Sparkles />}
+                title="No matches yet"
+                description="Add your WASSCE aggregate, programme and home region so the engine can rank awards for you."
+                action={
+                  <ButtonLink to="/app/settings" variant="accent">
+                    Complete my profile
+                  </ButtonLink>
+                }
+              />
+            )}
+          </section>
+
+          <section>
+            <SectionLabel
+              action={
+                <Link
+                  to="/app/applications"
+                  className="t-sm font-semibold text-ink underline underline-offset-4 hover:text-accent"
+                >
+                  Manage
+                </Link>
+              }
+            >
+              Application progress
+            </SectionLabel>
+
+            {applications.length > 0 ? (
+              <Card className="mt-3">
+                <ul className="rule-list">
+                  {applications.slice(0, 3).map((a) => (
+                    <li key={a.id} className="flex items-center gap-4 px-4 py-4 sm:px-5">
+                      <ScholarshipLogo
+                        name={a.scholarshipName}
+                        provider={a.provider}
+                        initials={a.initials}
+                        className="h-10 w-10"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="truncate text-sm font-semibold text-ink">
+                            {a.scholarshipName}
+                          </p>
+                          <StatusPill status={a.status} className="shrink-0" />
+                        </div>
+                        <div className="mt-2.5 flex items-center gap-3">
+                          <Progress
+                            value={a.progress}
+                            className="flex-1"
+                            tone={a.status === 'Interview' ? 'accent' : 'ink'}
+                          />
+                          <span className="tabular t-xs w-8 shrink-0 text-right font-semibold text-ink-muted">
+                            {a.progress}%
+                          </span>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            ) : (
+              <EmptyState
+                className="mt-3"
+                icon={<ClipboardList />}
+                title="No applications yet"
+                description="Start one from any scholarship you qualify for and track it here."
+                action={
+                  <ButtonLink to="/app/scholarships" variant="accent">
+                    Browse scholarships
+                  </ButtonLink>
+                }
+              />
+            )}
+          </section>
         </div>
 
-        {/* Right rail */}
-        <div className="space-y-6">
-          {/* Deadlines */}
-          <Card className="p-5 sm:p-6">
-            <h2 className="font-display text-lg font-bold text-ink-900">Upcoming deadlines</h2>
-            <div className="mt-4 space-y-3">
-              {upcoming.map((s) => {
-                const d = daysUntil(s.deadline)
-                const urgent = d <= 7
-                return (
-                  <div key={s.id} className="flex items-center gap-3">
-                    <div
-                      className={cn(
-                        'grid h-11 w-11 shrink-0 place-items-center rounded-xl text-center',
-                        urgent ? 'bg-rose-50 text-rose-600' : 'bg-ink-50 text-ink-500',
-                      )}
-                    >
-                      <span className="text-base font-bold leading-none">{d}</span>
-                      <span className="text-[9px] font-semibold uppercase">days</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-ink-800">{s.name}</p>
-                      <p className="text-xs text-ink-400">{formatDeadline(s.deadline)}</p>
-                    </div>
-                    {urgent && <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />}
-                  </div>
-                )
-              })}
-            </div>
-          </Card>
+        {/* ---------------- Right rail ---------------- */}
+        <div className="space-y-8">
+          <section>
+            <SectionLabel>Upcoming deadlines</SectionLabel>
+            {upcoming.length > 0 ? (
+              <Card className="mt-3">
+                <ul className="rule-list">
+                  {upcoming.map((s) => {
+                    const d = daysUntil(s.deadline)
+                    const urgent = d <= 7
+                    return (
+                      <li key={s.id}>
+                        <Link
+                          to={`/app/scholarships/${s.id}`}
+                          className="flex items-center gap-3.5 px-4 py-3.5 transition-colors hover:bg-surface-sunken"
+                        >
+                          <div
+                            className={cn(
+                              'grid h-11 w-11 shrink-0 place-items-center rounded-sm border text-center',
+                              urgent
+                                ? 'border-state-negative/40 bg-state-negative-soft text-state-negative'
+                                : 'border-rule text-ink-secondary',
+                            )}
+                          >
+                            <span className="tabular text-base font-bold leading-none">{d}</span>
+                            <span className="text-[0.5625rem] font-semibold uppercase tracking-wide">
+                              days
+                            </span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[0.8125rem] font-semibold text-ink">
+                              {s.name}
+                            </p>
+                            <p className="tabular t-xs text-ink-muted">
+                              {formatDeadline(s.deadline)}
+                            </p>
+                          </div>
+                          {urgent && (
+                            <AlertTriangle
+                              className="h-4 w-4 shrink-0 text-state-negative"
+                              aria-label="Closing soon"
+                            />
+                          )}
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </Card>
+            ) : (
+              <EmptyState
+                className="mt-3 py-10"
+                icon={<CalendarClock />}
+                title="No deadlines listed"
+                description="Nothing with a published closing date right now."
+              />
+            )}
+          </section>
 
-          {/* Activity */}
-          <Card className="p-5 sm:p-6">
-            <h2 className="font-display text-lg font-bold text-ink-900">Recent activity</h2>
-            <div className="mt-4 space-y-4">
-              {notifications.slice(0, 4).map((n: AppNotification) => (
-                <div key={n.id} className="flex gap-3">
-                  <div
-                    className={cn(
-                      'mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg',
-                      n.category === 'Interview' && 'bg-violet-50 text-violet-600',
-                      n.category === 'Deadline' && 'bg-rose-50 text-rose-600',
-                      n.category === 'Status' && 'bg-emerald-50 text-emerald-600',
-                      n.category === 'Match' && 'bg-brand-50 text-brand-600',
-                      n.category === 'System' && 'bg-ink-100 text-ink-500',
-                    )}
-                  >
-                    {n.category === 'Status' ? <CheckCircle2 className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-ink-800">{n.title}</p>
-                    <p className="text-xs text-ink-400">{n.time}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <Link
-              to="/app/notifications"
-              className="mt-4 block text-center text-sm font-semibold text-brand-600 hover:text-brand-700"
+          <section>
+            <SectionLabel
+              action={
+                <Link
+                  to="/app/notifications"
+                  className="t-sm font-semibold text-ink underline underline-offset-4 hover:text-accent"
+                >
+                  View all
+                </Link>
+              }
             >
-              View all notifications
-            </Link>
-          </Card>
+              Recent activity
+            </SectionLabel>
+
+            {notifications.length > 0 ? (
+              <Card className="mt-3">
+                <ul className="rule-list">
+                  {notifications.slice(0, 4).map((n) => (
+                    <li key={n.id} className="flex gap-3 px-4 py-3.5">
+                      <span
+                        className={cn(
+                          'mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-sm border',
+                          n.category === 'Deadline' && 'border-state-negative/30 text-state-negative',
+                          n.category === 'Interview' && 'border-state-special/30 text-state-special',
+                          n.category === 'Status' && 'border-state-positive/30 text-state-positive',
+                          n.category === 'Match' && 'border-accent/40 text-accent',
+                          n.category === 'System' && 'border-rule text-ink-muted',
+                        )}
+                        aria-hidden
+                      >
+                        <BellRing className="h-3.5 w-3.5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[0.8125rem] font-medium leading-snug text-ink">{n.title}</p>
+                        <p className="t-xs mt-0.5 text-ink-muted">{n.time}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            ) : (
+              <EmptyState
+                className="mt-3 py-10"
+                icon={<Inbox />}
+                title="Nothing yet"
+                description="Deadline and status alerts will appear here."
+              />
+            )}
+          </section>
         </div>
       </div>
     </div>

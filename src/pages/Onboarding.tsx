@@ -1,23 +1,14 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import {
-  GraduationCap,
-  School,
-  MapPin,
-  Wallet,
-  ClipboardCheck,
-  ArrowRight,
-  ArrowLeft,
-  Check,
-  BookOpen,
-} from 'lucide-react'
+import { GraduationCap, School, ArrowRight, ArrowLeft, Check } from 'lucide-react'
 import { Logo } from '../components/Logo'
 import { GHANA_REGIONS } from '../data/mock'
 import { ProgrammeSelect } from '../components/ProgrammeSelect'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../api/endpoints'
 import { cn } from '../lib/cn'
+import { Alert, Button, DataRow, Field, Input, Select } from '../components/ui'
 
 const INSTITUTIONS = [
   'Kwame Nkrumah University of Science & Technology',
@@ -37,26 +28,100 @@ const INSTITUTIONS = [
   'Ho Technical University',
 ]
 
-const stepsMeta = [
-  { icon: GraduationCap, title: 'Student type' },
-  { icon: BookOpen, title: 'Academics' },
-  { icon: MapPin, title: 'Background' },
-  { icon: Wallet, title: 'Financial need' },
-  { icon: ClipboardCheck, title: 'Review' },
-]
+const STEP_TITLES = ['Student type', 'Academics', 'Background', 'Financial need', 'Review']
 
-const inputCls =
-  'h-12 w-full rounded-xl border border-ink-200 bg-white px-4 text-sm text-ink-800 placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100'
+/* ------------------------------------------------------------------ *
+ * Local building blocks
+ * ------------------------------------------------------------------ */
 
-function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+/** Selection row with a gold left edge when chosen. */
+function ChoiceRow({
+  selected,
+  onSelect,
+  title,
+  desc,
+  icon,
+  className,
+}: {
+  selected: boolean
+  onSelect: () => void
+  title: string
+  desc?: string
+  icon?: ReactNode
+  className?: string
+}) {
   return (
-    <div className="mt-5">
-      <label className="mb-2 block text-sm font-semibold text-ink-700">{label}</label>
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={cn(
+        'relative w-full overflow-hidden rounded-md border p-4 text-left transition-colors duration-[--dur] sm:p-5',
+        selected
+          ? 'border-ink bg-surface-sunken'
+          : 'border-rule bg-surface hover:border-rule-strong',
+        className,
+      )}
+    >
+      <span
+        className={cn(
+          'absolute inset-y-0 left-0 w-1 transition-colors duration-[--dur]',
+          selected ? 'bg-accent' : 'bg-transparent',
+        )}
+        aria-hidden
+      />
+      <span className="flex items-start gap-3 pl-2">
+        {icon && (
+          <span className={cn('mt-0.5 shrink-0 [&_svg]:h-5 [&_svg]:w-5', selected ? 'text-ink' : 'text-ink-faint')}>
+            {icon}
+          </span>
+        )}
+        <span className="min-w-0">
+          <span className="block font-display text-base font-bold tracking-tight text-ink">{title}</span>
+          {desc && <span className="t-sm mt-1 block text-ink-muted">{desc}</span>}
+        </span>
+      </span>
+    </button>
+  )
+}
+
+/** Compact chip used for region / gender / status grids. */
+function ChoiceChip({
+  selected,
+  onSelect,
+  children,
+}: {
+  selected: boolean
+  onSelect: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={cn(
+        'rounded-md border px-3 py-2.5 text-[0.8125rem] font-semibold transition-colors duration-[--dur]',
+        selected
+          ? 'border-ink bg-ink text-canvas'
+          : 'border-rule bg-surface text-ink-secondary hover:border-rule-strong hover:text-ink',
+      )}
+    >
       {children}
-      {hint && <p className="mt-1.5 text-xs text-ink-500">{hint}</p>}
+    </button>
+  )
+}
+
+function StepIntro({ title, desc }: { title: string; desc: string }) {
+  return (
+    <div className="border-b border-rule pb-5">
+      <h2 className="t-h2 text-ink">{title}</h2>
+      <p className="t-body mt-2 max-w-prose text-ink-muted">{desc}</p>
     </div>
   )
 }
+
+/* ------------------------------------------------------------------ */
 
 export default function Onboarding() {
   const navigate = useNavigate()
@@ -144,7 +209,7 @@ export default function Onboarding() {
       }
       const updatedUser = await api.auth.updateMe(payload)
       setUser(updatedUser)
-      navigate('/app/matches')
+      navigate('/app/scholarships')
     } catch (err: any) {
       setError(err.message || 'Could not save your profile. Please try again.')
     } finally {
@@ -188,137 +253,116 @@ export default function Onboarding() {
         ]
 
   return (
-    <div className="min-h-screen bg-ink-50">
-      <header className="border-b border-ink-100 bg-white">
-        <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-5">
-          <Logo />
-          <span className="text-sm text-ink-400">Your profile powers your matches</span>
+    <div className="min-h-dvh bg-canvas">
+      <header className="border-b border-rule bg-surface">
+        <div className="mx-auto flex h-16 max-w-3xl items-center justify-between gap-4 px-4 sm:px-6">
+          <Logo size="sm" className="sm:hidden" />
+          <Logo className="hidden sm:flex" />
+          <span className="t-overline text-ink-muted">
+            Step {step + 1} <span className="text-ink-faint">of 5</span>
+          </span>
         </div>
       </header>
 
-      <div className="mx-auto max-w-4xl px-5 py-10">
-        {/* Stepper */}
-        <div className="mb-10 flex items-center justify-between">
-          {stepsMeta.map((s, i) => (
-            <div key={s.title} className="flex flex-1 items-center">
-              <div className="flex flex-col items-center gap-2 text-center">
-                <div
-                  className={cn(
-                    'grid h-11 w-11 place-items-center rounded-xl border-2 transition-colors',
-                    i < step && 'border-brand-600 bg-brand-600 text-white',
-                    i === step && 'border-brand-600 bg-brand-50 text-brand-700',
-                    i > step && 'border-ink-200 bg-white text-ink-300',
-                  )}
-                >
-                  {i < step ? <Check className="h-5 w-5" /> : <s.icon className="h-5 w-5" />}
-                </div>
-                <p className={cn('hidden text-xs font-semibold sm:block', i <= step ? 'text-ink-800' : 'text-ink-400')}>
-                  {s.title}
-                </p>
-              </div>
-              {i < stepsMeta.length - 1 && (
-                <div className={cn('mx-2 h-0.5 flex-1 rounded', i < step ? 'bg-brand-600' : 'bg-ink-200')} />
-              )}
-            </div>
-          ))}
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
+        {/* Progress rail */}
+        <div>
+          <div className="flex items-end justify-between gap-4">
+            <p className="t-overline text-accent">{STEP_TITLES[step]}</p>
+            <p className="tabular t-xs text-ink-muted">{Math.round(((step + 1) / 5) * 100)}%</p>
+          </div>
+          <div className="mt-3 flex gap-1.5" role="list" aria-label="Onboarding progress">
+            {STEP_TITLES.map((title, i) => (
+              <span
+                key={title}
+                role="listitem"
+                aria-current={i === step ? 'step' : undefined}
+                aria-label={`${title}${i < step ? ' (completed)' : ''}`}
+                className={cn(
+                  'h-1 flex-1 rounded-full transition-colors duration-[--dur]',
+                  i < step && 'bg-ink',
+                  i === step && 'bg-accent',
+                  i > step && 'bg-rule',
+                )}
+              />
+            ))}
+          </div>
         </div>
 
         <motion.div
           key={step}
-          initial={{ opacity: 0, x: 24 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.3 }}
-          className="rounded-2xl border border-ink-200/70 bg-white p-6 shadow-sm sm:p-8"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.28, ease: [0.2, 0, 0, 1] }}
+          className="mt-8 rounded-md border border-rule bg-surface p-5 sm:p-8"
         >
+          {/* -------- Step 0: student type -------- */}
           {step === 0 && (
-            <div>
-              <h2 className="font-display text-2xl font-bold text-ink-900">Which best describes you?</h2>
-              <p className="mt-1 text-ink-500">
-                SHS and university students qualify for different scholarships, so the matching
-                engine needs to know which you are.
-              </p>
-
-              <div className="mt-7 grid gap-4 sm:grid-cols-2">
-                {[
-                  {
-                    v: 'SHS' as const,
-                    icon: School,
-                    title: 'SHS student',
-                    desc: 'In senior high school or completed, planning for tertiary education',
-                  },
-                  {
-                    v: 'University' as const,
-                    icon: GraduationCap,
-                    title: 'University student',
-                    desc: 'Enrolled in a university, technical university or college',
-                  },
-                ].map((o) => (
-                  <button
-                    key={o.v}
-                    onClick={() => setStudentType(o.v)}
-                    className={cn(
-                      'rounded-2xl border-2 p-6 text-left transition',
-                      studentType === o.v
-                        ? 'border-brand-600 bg-brand-50'
-                        : 'border-ink-200 bg-white hover:border-ink-300',
-                    )}
-                  >
-                    <o.icon
-                      className={cn('h-8 w-8', studentType === o.v ? 'text-brand-700' : 'text-ink-400')}
-                    />
-                    <p className="mt-3 font-display text-lg font-bold text-ink-900">{o.title}</p>
-                    <p className="mt-1 text-sm text-ink-500">{o.desc}</p>
-                  </button>
-                ))}
+            <div className="space-y-6">
+              <StepIntro
+                title="Which best describes you?"
+                desc="SHS and university students qualify for different scholarships, so the matching engine needs to know which you are."
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ChoiceRow
+                  selected={studentType === 'SHS'}
+                  onSelect={() => setStudentType('SHS')}
+                  icon={<School />}
+                  title="SHS student"
+                  desc="In senior high school or completed, planning for tertiary education"
+                />
+                <ChoiceRow
+                  selected={studentType === 'University'}
+                  onSelect={() => setStudentType('University')}
+                  icon={<GraduationCap />}
+                  title="University student"
+                  desc="Enrolled in a university, technical university or college"
+                />
               </div>
             </div>
           )}
 
+          {/* -------- Step 1: SHS -------- */}
           {step === 1 && studentType === 'SHS' && (
-            <div>
-              <h2 className="font-display text-2xl font-bold text-ink-900">Your SHS details</h2>
-              <p className="mt-1 text-ink-500">
-                Awards for tertiary entry are matched from these.
-              </p>
+            <div className="space-y-6">
+              <StepIntro
+                title="Your SHS details"
+                desc="Awards for tertiary entry are matched from these."
+              />
 
-              <Field label="Senior high school">
-                <input
+              <Field label="Senior high school" htmlFor="ob-school" required>
+                <Input
+                  id="ob-school"
                   value={shsSchool}
                   onChange={(e) => setShsSchool(e.target.value)}
                   placeholder="e.g. Prempeh College"
-                  className={inputCls}
                 />
               </Field>
 
-              <Field label="Current level">
-                <select value={shsLevel} onChange={(e) => setShsLevel(e.target.value)} className={inputCls}>
+              <Field label="Current level" htmlFor="ob-level" required>
+                <Select id="ob-level" value={shsLevel} onChange={(e) => setShsLevel(e.target.value)}>
                   <option value="">Select your level…</option>
                   <option>Form 1</option>
                   <option>Form 2</option>
                   <option>Form 3</option>
                   <option value="Completed">Completed SHS</option>
-                </select>
+                </Select>
               </Field>
 
-              <Field label="WASSCE status">
+              <Field label="WASSCE status" required>
                 <div className="grid gap-2 sm:grid-cols-3">
                   {[
                     { v: 'not_written', l: 'Not yet written' },
                     { v: 'awaiting', l: 'Awaiting results' },
                     { v: 'released', l: 'Results released' },
                   ].map((o) => (
-                    <button
+                    <ChoiceChip
                       key={o.v}
-                      onClick={() => setWassceStatus(o.v)}
-                      className={cn(
-                        'rounded-xl border px-3 py-2.5 text-sm font-medium transition',
-                        wassceStatus === o.v
-                          ? 'border-brand-600 bg-brand-50 text-brand-700'
-                          : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300',
-                      )}
+                      selected={wassceStatus === o.v}
+                      onSelect={() => setWassceStatus(o.v)}
                     >
                       {o.l}
-                    </button>
+                    </ChoiceChip>
                   ))}
                 </div>
               </Field>
@@ -326,46 +370,50 @@ export default function Onboarding() {
               {wassceStatus === 'released' && (
                 <Field
                   label="WASSCE aggregate (best six)"
+                  htmlFor="ob-agg"
+                  required
                   hint="From 6 (best possible) to 54. You can find it on your results slip."
                 >
-                  <input
+                  <Input
+                    id="ob-agg"
                     type="number"
                     min={6}
                     max={54}
+                    inputMode="numeric"
                     value={aggregate}
                     onChange={(e) => setAggregate(e.target.value)}
                     placeholder="e.g. 12"
-                    className={inputCls}
                   />
                 </Field>
               )}
               {wassceStatus !== '' && wassceStatus !== 'released' && (
-                <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  No problem — add your aggregate when results are released. Until then, matches
-                  that need it will show as pending rather than confirmed.
-                </p>
+                <Alert tone="warning">
+                  No problem — add your aggregate when results are released. Until then, matches that
+                  need it will show as pending rather than confirmed.
+                </Alert>
               )}
 
-              <Field label="Programme you intend to study">
-                <ProgrammeSelect value={programme} onChange={setProgramme} className={inputCls} />
+              <Field label="Programme you intend to study" required>
+                <ProgrammeSelect value={programme} onChange={setProgramme} />
               </Field>
             </div>
           )}
 
+          {/* -------- Step 1: University -------- */}
           {step === 1 && studentType === 'University' && (
-            <div>
-              <h2 className="font-display text-2xl font-bold text-ink-900">Your university details</h2>
-              <p className="mt-1 text-ink-500">
-                Continuing-student awards are matched from these.
-              </p>
+            <div className="space-y-6">
+              <StepIntro
+                title="Your university details"
+                desc="Continuing-student awards are matched from these."
+              />
 
-              <Field label="Institution">
-                <input
+              <Field label="Institution" htmlFor="ob-inst" required>
+                <Input
+                  id="ob-inst"
                   list="institutions"
                   value={institution}
                   onChange={(e) => setInstitution(e.target.value)}
                   placeholder="Start typing your institution…"
-                  className={inputCls}
                 />
                 <datalist id="institutions">
                   {INSTITUTIONS.map((i) => (
@@ -374,15 +422,15 @@ export default function Onboarding() {
                 </datalist>
               </Field>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Programme of study">
-                  <ProgrammeSelect value={programme} onChange={setProgramme} className={inputCls} />
+              <div className="grid gap-6 sm:grid-cols-2">
+                <Field label="Programme of study" required>
+                  <ProgrammeSelect value={programme} onChange={setProgramme} />
                 </Field>
-                <Field label="Current level">
-                  <select
+                <Field label="Current level" htmlFor="ob-ulevel" required>
+                  <Select
+                    id="ob-ulevel"
                     value={universityLevel}
                     onChange={(e) => setUniversityLevel(e.target.value)}
-                    className={inputCls}
                   >
                     <option value="">Select your level…</option>
                     <option value="100">Level 100</option>
@@ -390,13 +438,18 @@ export default function Onboarding() {
                     <option value="300">Level 300</option>
                     <option value="400">Level 400</option>
                     <option value="Postgraduate">Postgraduate</option>
-                  </select>
+                  </Select>
                 </Field>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Academic standing" hint="Use your latest transcript classification.">
-                  <select value={standing} onChange={(e) => setStanding(e.target.value)} className={inputCls}>
+              <div className="grid gap-6 sm:grid-cols-2">
+                <Field
+                  label="Academic standing"
+                  htmlFor="ob-standing"
+                  required
+                  hint="Use your latest transcript classification."
+                >
+                  <Select id="ob-standing" value={standing} onChange={(e) => setStanding(e.target.value)}>
                     <option value="">Select standing…</option>
                     <option>First Class</option>
                     <option>Second Class Upper</option>
@@ -404,178 +457,166 @@ export default function Onboarding() {
                     <option>Third Class</option>
                     <option>Pass</option>
                     <option>No results yet</option>
-                  </select>
+                  </Select>
                 </Field>
-                <Field label="WASSCE aggregate (best six)" hint="6 (best) to 54 — still used by many awards.">
-                  <input
+                <Field
+                  label="WASSCE aggregate (best six)"
+                  htmlFor="ob-uagg"
+                  required
+                  hint="6 (best) to 54 — still used by many awards."
+                >
+                  <Input
+                    id="ob-uagg"
                     type="number"
                     min={6}
                     max={54}
+                    inputMode="numeric"
                     value={aggregate}
                     onChange={(e) => setAggregate(e.target.value)}
                     placeholder="e.g. 8"
-                    className={inputCls}
                   />
                 </Field>
               </div>
 
-              <Field label="Student ID (optional)">
-                <input
+              <Field label="Student ID" htmlFor="ob-sid" hint="Optional.">
+                <Input
+                  id="ob-sid"
                   value={studentId}
                   onChange={(e) => setStudentId(e.target.value)}
                   placeholder="e.g. 1821122"
-                  className={inputCls}
                 />
               </Field>
             </div>
           )}
 
+          {/* -------- Step 2: background -------- */}
           {step === 2 && (
-            <div>
-              <h2 className="font-display text-2xl font-bold text-ink-900">Your background</h2>
-              <p className="mt-1 text-ink-500">
-                District schemes prioritise indigenes, so this unlocks local awards.
-              </p>
+            <div className="space-y-6">
+              <StepIntro
+                title="Your background"
+                desc="District schemes prioritise indigenes, so this unlocks local awards."
+              />
 
-              <label className="mb-2 mt-7 block text-sm font-semibold text-ink-700">Home region</label>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {GHANA_REGIONS.map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setRegion(r)}
-                    className={cn(
-                      'rounded-xl border px-3 py-2.5 text-sm font-medium transition',
-                      region === r
-                        ? 'border-brand-600 bg-brand-50 text-brand-700'
-                        : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300',
-                    )}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
+              <Field label="Home region" required>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {GHANA_REGIONS.map((r) => (
+                    <ChoiceChip key={r} selected={region === r} onSelect={() => setRegion(r)}>
+                      {r}
+                    </ChoiceChip>
+                  ))}
+                </div>
+              </Field>
 
-              <Field label="Home district (MMDA)" hint="e.g. Kumasi Metropolitan, Ho Municipal, Bongo District">
-                <input
+              <Field
+                label="Home district (MMDA)"
+                htmlFor="ob-district"
+                required
+                hint="e.g. Kumasi Metropolitan, Ho Municipal, Bongo District"
+              >
+                <Input
+                  id="ob-district"
                   value={district}
                   onChange={(e) => setDistrict(e.target.value)}
                   placeholder="Enter your home district…"
-                  className={inputCls}
                 />
               </Field>
 
-              <label className="mb-2 mt-6 block text-sm font-semibold text-ink-700">Gender</label>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {['Female', 'Male', 'Prefer not to say'].map((g) => (
-                  <button
-                    key={g}
-                    onClick={() => setGender(g)}
-                    className={cn(
-                      'rounded-xl border px-3 py-2.5 text-sm font-medium transition',
-                      gender === g
-                        ? 'border-brand-600 bg-brand-50 text-brand-700'
-                        : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300',
-                    )}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-2 text-xs text-ink-500">
-                A number of funders run women-only scholarships, especially in STEM and leadership.
-                Telling us lets the matcher surface those instead of hiding them.
-              </p>
+              <Field
+                label="Gender"
+                required
+                hint="A number of funders run women-only scholarships, especially in STEM and leadership. Telling us lets the matcher surface those instead of hiding them."
+              >
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {['Female', 'Male', 'Prefer not to say'].map((g) => (
+                    <ChoiceChip key={g} selected={gender === g} onSelect={() => setGender(g)}>
+                      {g}
+                    </ChoiceChip>
+                  ))}
+                </div>
+              </Field>
+
               {gender === 'Prefer not to say' && (
-                <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <Alert tone="warning">
                   That is completely fine. Awards restricted to one gender will show as
                   &ldquo;confirm eligibility&rdquo; rather than a definite match, since we cannot
                   verify that criterion for you.
-                </p>
+                </Alert>
               )}
             </div>
           )}
 
+          {/* -------- Step 3: need -------- */}
           {step === 3 && (
-            <div>
-              <h2 className="font-display text-2xl font-bold text-ink-900">Financial need</h2>
-              <p className="mt-1 text-ink-500">
-                Many awards are need-based. This stays private and encrypted.
-              </p>
-
-              <div className="mt-7 space-y-3">
+            <div className="space-y-6">
+              <StepIntro
+                title="Financial need"
+                desc="Many awards are need-based. This stays private and encrypted."
+              />
+              <div className="space-y-3">
                 {[
-                  { v: 'High', d: 'Scholarship is essential for me to study or remain enrolled' },
+                  { v: 'High', d: 'A scholarship is essential for me to study or remain enrolled' },
                   { v: 'Moderate', d: 'Significant help needed alongside other support' },
                   { v: 'Low', d: 'Primarily seeking merit-based recognition' },
                 ].map((o) => (
-                  <button
+                  <ChoiceRow
                     key={o.v}
-                    onClick={() => setNeed(o.v)}
-                    className={cn(
-                      'flex w-full items-center gap-4 rounded-xl border p-4 text-left transition',
-                      need === o.v ? 'border-brand-600 bg-brand-50' : 'border-ink-200 bg-white hover:border-ink-300',
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'grid h-5 w-5 shrink-0 place-items-center rounded-full border-2',
-                        need === o.v ? 'border-brand-600 bg-brand-600' : 'border-ink-300',
-                      )}
-                    >
-                      {need === o.v && <div className="h-2 w-2 rounded-full bg-white" />}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-ink-800">{o.v} need</p>
-                      <p className="text-sm text-ink-500">{o.d}</p>
-                    </div>
-                  </button>
+                    selected={need === o.v}
+                    onSelect={() => setNeed(o.v)}
+                    title={`${o.v} need`}
+                    desc={o.d}
+                  />
                 ))}
               </div>
             </div>
           )}
 
+          {/* -------- Step 4: review -------- */}
           {step === 4 && (
-            <div>
-              <h2 className="font-display text-2xl font-bold text-ink-900">Review your profile</h2>
-              <p className="mt-1 text-ink-500">
-                Your matches are computed from exactly these details — check them before saving.
-              </p>
+            <div className="space-y-6">
+              <StepIntro
+                title="Review your profile"
+                desc="Your matches are computed from exactly these details — check them before saving."
+              />
 
-              {error && <p className="mt-4 text-sm font-semibold text-rose-600">{error}</p>}
+              {error && <Alert tone="danger">{error}</Alert>}
 
-              <div className="mt-6 grid gap-2.5">
+              <dl className="rule-list border-y border-rule">
                 {reviewRows.map((row) => (
-                  <div key={row.l} className="flex items-center justify-between rounded-xl bg-ink-50 px-4 py-3">
-                    <span className="text-sm text-ink-500">{row.l}</span>
-                    <span className="text-sm font-semibold text-ink-800">{row.v}</span>
-                  </div>
+                  <DataRow key={row.l} label={row.l} value={row.v || '—'} />
                 ))}
-              </div>
+              </dl>
             </div>
           )}
 
-          {/* Controls */}
-          <div className="mt-8 flex items-center justify-between">
-            <button
+          {/* -------- Controls -------- */}
+          <div className="mt-8 flex flex-col-reverse gap-3 border-t border-rule pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <Button
+              variant="ghost"
               onClick={back}
               disabled={step === 0}
-              className={cn(
-                'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition',
-                step === 0 ? 'invisible' : 'text-ink-600 hover:bg-ink-100',
-              )}
+              className={cn(step === 0 && 'invisible hidden sm:inline-flex')}
+              icon={<ArrowLeft className="h-4 w-4" />}
             >
-              <ArrowLeft className="h-4 w-4" /> Back
-            </button>
-            <button
+              Back
+            </Button>
+            <Button
+              variant="accent"
+              size="lg"
               onClick={next}
-              disabled={saving || !stepValid()}
-              className="flex items-center gap-2 rounded-xl bg-brand-600 px-8 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-50"
+              loading={saving}
+              disabled={!stepValid()}
+              className="w-full justify-center sm:w-auto"
+              iconRight={<ArrowRight className="h-4 w-4" />}
             >
-              {saving ? 'Saving…' : step === 4 ? 'Save & see my matches' : 'Continue'}
-              {!saving && <ArrowRight className="h-4.5 w-4.5" />}
-            </button>
+              {step === 4 ? 'Save & see my matches' : 'Continue'}
+            </Button>
           </div>
         </motion.div>
+
+        <p className="t-xs mt-6 flex items-center justify-center gap-2 text-ink-muted">
+          <Check className="h-3.5 w-3.5 text-accent" aria-hidden />
+          Your answers stay private and are only used to compute your matches.
+        </p>
       </div>
     </div>
   )

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
-  Sparkles,
+  Compass,
   FolderLock,
   ClipboardList,
   Bell,
@@ -13,8 +13,6 @@ import {
   Search,
   LogOut,
   ShieldCheck,
-  ChevronDown,
-  Book,
   Sun,
   Moon,
 } from 'lucide-react'
@@ -27,116 +25,121 @@ import { cn } from '../lib/cn'
 
 const nav = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/app/scholarships', label: 'Scholarships', icon: Book },
-  { to: '/app/matches', label: 'Scholarship Matches', icon: Sparkles },
-  { to: '/app/applications', label: 'My Applications', icon: ClipboardList },
-  { to: '/app/vault', label: 'Document Vault', icon: FolderLock },
+  { to: '/app/scholarships', label: 'Scholarships', icon: Compass },
+  { to: '/app/applications', label: 'Applications', icon: ClipboardList },
+  { to: '/app/vault', label: 'Document vault', icon: FolderLock },
   { to: '/app/notifications', label: 'Notifications', icon: Bell },
-  { to: '/app/assistant', label: 'Decision Bot', icon: Bot },
+  { to: '/app/assistant', label: 'Decision bot', icon: Bot },
 ]
 
 const secondary = [
   { to: '/app/settings', label: 'Settings', icon: Settings },
-  { to: '/admin', label: 'Admin Console', icon: ShieldCheck },
+  { to: '/app/admin', label: 'Admin console', icon: ShieldCheck },
 ]
+
+function NavItem({
+  item,
+  badge,
+  onNavigate,
+}: {
+  item: { to: string; label: string; icon: any; end?: boolean }
+  badge?: number
+  onNavigate?: () => void
+}) {
+  return (
+    <NavLink
+      to={item.to}
+      end={item.end}
+      onClick={onNavigate}
+      className={({ isActive }) =>
+        cn(
+          'group relative flex items-center gap-3 py-2.5 pl-5 pr-4 text-sm font-medium transition-colors duration-[--dur]',
+          isActive ? 'text-band-on' : 'text-band-muted hover:text-band-on',
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          {/* Gold edge marks the active route */}
+          <span
+            className={cn(
+              'absolute inset-y-1 left-0 w-[3px] rounded-r-full transition-colors duration-[--dur]',
+              isActive ? 'bg-accent' : 'bg-transparent',
+            )}
+            aria-hidden
+          />
+          <item.icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+          {badge ? (
+            <span
+              className={cn(
+                'tabular shrink-0 rounded-sm px-1.5 py-0.5 text-[0.6875rem] font-bold',
+                isActive ? 'bg-accent text-accent-on' : 'bg-band-rule text-band-muted',
+              )}
+            >
+              {badge}
+            </span>
+          ) : null}
+        </>
+      )}
+    </NavLink>
+  )
+}
 
 function SidebarContent({
   onNavigate,
   badges = {},
   isStaff = false,
+  completion,
 }: {
   onNavigate?: () => void
   badges?: Record<string, number>
   isStaff?: boolean
+  completion?: number
 }) {
-  const secondaryNav = secondary.filter((item) => item.to !== '/admin' || isStaff)
+  const secondaryNav = secondary.filter((item) => item.to !== '/app/admin' || isStaff)
+
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex h-16 items-center px-6">
-        <Logo />
+    <div className="flex h-full flex-col bg-band">
+      <div className="flex h-16 shrink-0 items-center border-b border-band-rule px-5">
+        <NavLink to="/app" onClick={onNavigate} aria-label="ScholarCircle dashboard">
+          <Logo tone="band" size="sm" />
+        </NavLink>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3 py-2">
-        <p className="px-3 pb-2 pt-3 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
-          Student
-        </p>
+      <nav className="min-h-0 flex-1 overflow-y-auto py-4">
+        <p className="t-overline px-5 pb-2 pt-2 text-band-muted/70">Student</p>
         {nav.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            onClick={onNavigate}
-            className={({ isActive }) =>
-              cn(
-                'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-400'
-                  : 'text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-400 dark:hover:bg-ink-900 dark:hover:text-ink-100',
-              )
-            }
-          >
-            {({ isActive }) => {
-              const badge = badges[item.to]
-              return (
-                <>
-                  <item.icon
-                    className={cn('h-[18px] w-[18px]', isActive ? 'text-brand-600' : 'text-ink-400 group-hover:text-ink-600')}
-                  />
-                  <span className="flex-1">{item.label}</span>
-                  {badge ? (
-                    <span
-                      className={cn(
-                        'rounded-full px-2 py-0.5 text-[11px] font-semibold',
-                        isActive ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500',
-                      )}
-                    >
-                      {badge}
-                    </span>
-                  ) : null}
-                </>
-              )
-            }}
-          </NavLink>
+          <NavItem key={item.to} item={item} badge={badges[item.to]} onNavigate={onNavigate} />
         ))}
 
-        <p className="px-3 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
-          More
-        </p>
+        <p className="t-overline px-5 pb-2 pt-6 text-band-muted/70">More</p>
         {secondaryNav.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            onClick={onNavigate}
-            className={({ isActive }) =>
-              cn(
-                'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-brand-50 text-brand-700'
-                  : 'text-ink-600 hover:bg-ink-50 hover:text-ink-900',
-              )
-            }
-          >
-            <item.icon className="h-[18px] w-[18px] text-ink-400 group-hover:text-ink-600" />
-            <span>{item.label}</span>
-          </NavLink>
+          <NavItem key={item.to} item={item} onNavigate={onNavigate} />
         ))}
       </nav>
 
-      <div className="m-3 rounded-2xl bg-gradient-to-br from-brand-700 to-brand-900 p-4 text-white">
-        <div className="flex items-center gap-2 text-xs font-semibold text-brand-100">
-          <ShieldCheck className="h-4 w-4" /> Secure Vault
+      {typeof completion === 'number' && (
+        <div className="shrink-0 border-t border-band-rule px-5 py-5">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="t-overline text-band-muted">Profile strength</p>
+            <p className="tabular font-display text-sm font-extrabold text-accent">{completion}%</p>
+          </div>
+          <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-band-rule">
+            <div
+              className="h-full rounded-full bg-accent transition-[width] duration-500 ease-brand"
+              style={{ width: `${Math.max(0, Math.min(100, completion))}%` }}
+            />
+          </div>
+          <NavLink
+            to="/app/settings"
+            onClick={onNavigate}
+            className="t-xs mt-3 inline-block font-semibold text-band-muted underline underline-offset-4 transition-colors hover:text-band-on"
+          >
+            {completion >= 100 ? 'Review your profile' : 'Complete your profile'}
+          </NavLink>
         </div>
-        <p className="mt-2 text-sm font-medium leading-snug">
-          Your documents are AES-256 encrypted at rest.
-        </p>
-        <NavLink
-          to="/app/vault"
-          onClick={onNavigate}
-          className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-gold-300 hover:text-gold-400"
-        >
-          Manage documents →
-        </NavLink>
-      </div>
+      )}
     </div>
   )
 }
@@ -169,9 +172,25 @@ export function AppLayout() {
     }
   }, [location.pathname])
 
+  // Close the drawer on route change, Escape, or a jump to desktop width.
+  useEffect(() => setMobileOpen(false), [location.pathname])
+
+  useEffect(() => {
+    if (!mobileOpen) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMobileOpen(false)
+    const { overflow } = document.body.style
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = overflow
+    }
+  }, [mobileOpen])
+
   const badges: Record<string, number> = {
-    '/app/matches': counts.matches,
+    '/app/scholarships': counts.matches,
     '/app/applications': counts.applications,
+    '/app/notifications': counts.unread,
   }
   const unread = counts.unread
 
@@ -180,86 +199,110 @@ export function AppLayout() {
     ((user?.first_name?.[0] || '') + (user?.last_name?.[0] || '')).toUpperCase() ||
     (user?.email?.[0] || 'U').toUpperCase()
   const subLabel = user?.profile?.student_id || user?.email || ''
+  const completion =
+    typeof user?.profile?.profile_completion === 'number'
+      ? Math.round(user.profile.profile_completion)
+      : undefined
 
   return (
-    <div className="min-h-screen bg-ink-50 dark:bg-ink-950">
+    <div className="min-h-dvh bg-canvas">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-ink-200/70 bg-white dark:border-ink-800 dark:bg-ink-950 lg:block">
-        <SidebarContent badges={badges} isStaff={!!user?.is_staff} />
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 lg:block">
+        <SidebarContent badges={badges} isStaff={!!user?.is_staff} completion={completion} />
       </aside>
 
-      {/* Mobile sidebar */}
+      {/* Mobile drawer */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 w-72 bg-white shadow-xl">
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            type="button"
+            aria-label="Close navigation"
+            className="absolute inset-0 bg-ink/60"
+            onClick={() => setMobileOpen(false)}
+          />
+          <aside className="absolute inset-y-0 left-0 flex w-[17rem] max-w-[86vw] flex-col shadow-overlay">
             <button
-              className="absolute right-3 top-4 grid h-8 w-8 place-items-center rounded-lg text-ink-500 hover:bg-ink-100"
+              type="button"
+              className="absolute right-3 top-4 z-10 grid h-9 w-9 place-items-center rounded-sm text-band-muted transition-colors hover:bg-band-rule hover:text-band-on"
               onClick={() => setMobileOpen(false)}
+              aria-label="Close navigation"
             >
               <X className="h-5 w-5" />
             </button>
-            <SidebarContent badges={badges} isStaff={!!user?.is_staff} onNavigate={() => setMobileOpen(false)} />
+            <SidebarContent
+              badges={badges}
+              isStaff={!!user?.is_staff}
+              completion={completion}
+              onNavigate={() => setMobileOpen(false)}
+            />
           </aside>
         </div>
       )}
 
       <div className="lg:pl-64">
         {/* Topbar */}
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-ink-200/70 bg-white/80 dark:border-ink-800 dark:bg-ink-950/80 px-4 backdrop-blur-md sm:px-6">
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-2 border-b border-rule bg-canvas px-3 sm:gap-3 sm:px-6">
           <button
-            className="grid h-9 w-9 place-items-center rounded-lg text-ink-500 hover:bg-ink-100 lg:hidden"
+            type="button"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-sm text-ink-secondary transition-colors hover:bg-surface-sunken lg:hidden"
             onClick={() => setMobileOpen(true)}
+            aria-label="Open navigation"
           >
             <Menu className="h-5 w-5" />
           </button>
 
-          <div className="relative hidden flex-1 sm:block">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+          <div className="relative hidden min-w-0 flex-1 md:block">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint"
+              aria-hidden
+            />
             <input
               placeholder="Search scholarships, applications, documents…"
-              className="h-10 w-full max-w-md rounded-xl border border-ink-200 bg-ink-50 pl-9 pr-4 text-sm text-ink-700 placeholder:text-ink-400 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-100 dark:focus:border-brand-500"
+              aria-label="Search"
+              className="h-9 w-full max-w-sm rounded-md border border-rule bg-surface pl-9 pr-4 text-sm text-ink placeholder:text-ink-faint transition-colors hover:border-rule-strong focus:border-ink focus:outline-none"
             />
           </div>
 
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="ml-auto flex items-center gap-1">
             <button
+              type="button"
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="grid h-9 w-9 place-items-center rounded-lg text-ink-500 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-ink-800"
-              title="Toggle theme"
+              className="grid h-9 w-9 place-items-center rounded-sm text-ink-secondary transition-colors hover:bg-surface-sunken"
+              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
             >
-              {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              {theme === 'dark' ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
             </button>
 
             <NavLink
               to="/app/notifications"
-              className="relative grid h-9 w-9 place-items-center rounded-lg text-ink-500 hover:bg-ink-100"
+              className="relative grid h-9 w-9 place-items-center rounded-sm text-ink-secondary transition-colors hover:bg-surface-sunken"
+              aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
             >
-              <Bell className="h-5 w-5" />
+              <Bell className="h-[18px] w-[18px]" />
               {unread > 0 && (
-                <span className="absolute right-1.5 top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
-                  {unread}
+                <span className="tabular absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[0.625rem] font-bold text-accent-on">
+                  {unread > 9 ? '9+' : unread}
                 </span>
               )}
             </NavLink>
 
-            <div className="mx-1 hidden h-6 w-px bg-ink-200 sm:block" />
+            <span className="mx-1.5 hidden h-6 w-px bg-rule sm:block" aria-hidden />
 
             <NavLink
               to="/app/settings"
-              className="flex items-center gap-2.5 rounded-xl py-1.5 pl-1.5 pr-2 hover:bg-ink-50"
+              className="flex items-center gap-2.5 rounded-sm py-1 pl-1 pr-2 transition-colors hover:bg-surface-sunken"
             >
-              <Avatar initials={initials} className="h-8 w-8 text-xs" />
-              <div className="hidden text-left leading-tight sm:block">
-                <p className="text-sm font-semibold text-ink-800">{fullName}</p>
-                {subLabel && <p className="text-[11px] text-ink-400">{subLabel}</p>}
-              </div>
-              <ChevronDown className="hidden h-4 w-4 text-ink-400 sm:block" />
+              <Avatar initials={initials} className="h-8 w-8" />
+              <span className="hidden min-w-0 text-left leading-tight sm:block">
+                <span className="block truncate text-[0.8125rem] font-semibold text-ink">{fullName}</span>
+                {subLabel && <span className="block truncate text-[0.6875rem] text-ink-muted">{subLabel}</span>}
+              </span>
             </NavLink>
 
             <NavLink
               to="/login"
-              className="grid h-9 w-9 place-items-center rounded-lg text-ink-400 hover:bg-rose-50 hover:text-rose-600"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-sm text-ink-muted transition-colors hover:bg-state-negative-soft hover:text-state-negative"
+              aria-label="Sign out"
               title="Sign out"
             >
               <LogOut className="h-[18px] w-[18px]" />
@@ -267,7 +310,10 @@ export function AppLayout() {
           </div>
         </header>
 
-        <main key={location.pathname} className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8">
+        <main
+          key={location.pathname}
+          className="mx-auto w-full max-w-content px-4 py-6 sm:px-6 lg:px-8 lg:py-10"
+        >
           <Outlet />
         </main>
       </div>

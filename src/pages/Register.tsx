@@ -5,6 +5,7 @@ import { AuthShell } from '../components/AuthShell'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../api/endpoints'
 import { cn } from '../lib/cn'
+import { Alert, Button, Checkbox, Field, Input } from '../components/ui'
 
 export default function Register() {
   const navigate = useNavigate()
@@ -19,7 +20,7 @@ export default function Register() {
     setError('')
     setLoading(true)
     const formData = new FormData(e.target as HTMLFormElement)
-    
+
     // Split full name
     const fullName = formData.get('full_name') as string
     const parts = fullName.trim().split(' ')
@@ -52,121 +53,136 @@ export default function Register() {
   return (
     <AuthShell>
       <div>
-        <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink-900">
-          Create your account
-        </h1>
-        <p className="mt-2 text-ink-500">It takes under two minutes. No application fees, ever.</p>
-        
-        {error && <p className="mt-4 text-sm font-semibold text-rose-600">{error}</p>}
+        <p className="t-overline text-ink-muted">Get started</p>
+        <h1 className="t-h1 mt-3 text-ink">Create your account</h1>
+        <p className="t-body mt-3 text-ink-muted">
+          Under two minutes, and there are no application fees — ever.
+        </p>
 
-        <form className="mt-8 space-y-4" onSubmit={handleRegister}>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-ink-700">Full name</label>
-            <div className="relative">
-              <User className="pointer-events-none absolute left-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-ink-400" />
-              <input
-                name="full_name"
+        {error && (
+          <Alert tone="danger" className="mt-6">
+            {error}
+          </Alert>
+        )}
+
+        <form className="mt-8 space-y-5" onSubmit={handleRegister}>
+          <Field label="Full name" htmlFor="reg-name" required>
+            <Input
+              id="reg-name"
+              name="full_name"
+              required
+              autoComplete="name"
+              inputSize="lg"
+              placeholder="e.g. Benjamin Darko"
+              icon={<User />}
+            />
+          </Field>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field label="Email" htmlFor="reg-email" required>
+              <Input
+                id="reg-email"
+                name="email"
+                type="email"
                 required
-                placeholder="e.g. Benjamin Darko"
-                className="h-12 w-full rounded-xl border border-ink-200 bg-white pl-11 pr-4 text-sm text-ink-800 placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                autoComplete="email"
+                inputSize="lg"
+                placeholder="you@school.edu.gh"
+                icon={<Mail />}
               />
-            </div>
+            </Field>
+            <Field label="Phone" htmlFor="reg-phone" required hint="Used for SMS deadline alerts.">
+              <Input
+                id="reg-phone"
+                name="phone"
+                required
+                autoComplete="tel"
+                inputSize="lg"
+                placeholder="024 123 4567"
+                pattern="^(\+233|0)\s?\d{2}\s?\d{3}\s?\d{4}$"
+                title="Enter a Ghanaian number, e.g. 024 123 4567 or +233 24 123 4567"
+                icon={<Phone />}
+              />
+            </Field>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-ink-700">Email</label>
-              <div className="relative">
-                <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-ink-400" />
-                <input
-                  name="email"
-                  type="email"
-                  required
-                  placeholder="you@school.edu.gh"
-                  className="h-12 w-full rounded-xl border border-ink-200 bg-white pl-11 pr-4 text-sm text-ink-800 placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-ink-700">Phone (for SMS)</label>
-              <div className="relative">
-                <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-ink-400" />
-                <input
-                  name="phone"
-                  placeholder="024 123 4567"
-                  required
-                  pattern="^(\+233|0)\s?\d{2}\s?\d{3}\s?\d{4}$"
-                  title="Enter a Ghanaian number, e.g. 024 123 4567 or +233 24 123 4567"
-                  className="h-12 w-full rounded-xl border border-ink-200 bg-white pl-11 pr-4 text-sm text-ink-800 placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-ink-700">Password</label>
-            <div className="relative">
-              <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-ink-400" />
-              <input
-                type={show ? 'text' : 'password'}
-                value={pwd}
-                onChange={(e) => setPwd(e.target.value)}
-                placeholder="Create a strong password"
-                className="h-12 w-full rounded-xl border border-ink-200 bg-white pl-11 pr-11 text-sm text-ink-800 placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
-              />
-              <button
-                type="button"
-                onClick={() => setShow((s) => !s)}
-                className="absolute right-3 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"
-              >
-                {show ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
-              </button>
-            </div>
-            <div className="mt-2.5 flex flex-wrap gap-3">
-              {checks.map((c) => (
-                <span
-                  key={c.label}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 text-xs font-medium',
-                    c.ok ? 'text-emerald-600' : 'text-ink-400',
-                  )}
+          <Field label="Password" htmlFor="reg-password" required>
+            <Input
+              id="reg-password"
+              type={show ? 'text' : 'password'}
+              autoComplete="new-password"
+              inputSize="lg"
+              required
+              placeholder="Create a strong password"
+              icon={<Lock />}
+              value={pwd}
+              onChange={(e) => setPwd(e.target.value)}
+              trailing={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setShow((s) => !s)}
+                  aria-label={show ? 'Hide password' : 'Show password'}
                 >
-                  <span
-                    className={cn(
-                      'grid h-4 w-4 place-items-center rounded-full',
-                      c.ok ? 'bg-emerald-100' : 'bg-ink-100',
-                    )}
-                  >
-                    <Check className="h-3 w-3" />
-                  </span>
-                  {c.label}
+                  {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              }
+            />
+          </Field>
+
+          <ul className="rule-list border-y border-rule">
+            {checks.map((c) => (
+              <li key={c.label} className="flex items-center gap-3 py-2.5">
+                <span
+                  className={cn(
+                    'grid h-4.5 w-4.5 shrink-0 place-items-center rounded-full border transition-colors duration-[--dur]',
+                    c.ok
+                      ? 'border-state-positive bg-state-positive text-white'
+                      : 'border-rule-strong text-transparent',
+                  )}
+                  aria-hidden
+                >
+                  <Check className="h-3 w-3" strokeWidth={3} />
                 </span>
-              ))}
-            </div>
-          </div>
+                <span className={cn('t-sm', c.ok ? 'text-ink' : 'text-ink-muted')}>{c.label}</span>
+              </li>
+            ))}
+          </ul>
 
-          <label className="flex items-start gap-2 text-sm text-ink-600">
-            <input type="checkbox" required className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-200" />
-            <span>
-              I agree to the <a href="#" className="font-semibold text-brand-600">Terms</a> and{' '}
-              <a href="#" className="font-semibold text-brand-600">Privacy Policy</a>, including
-              encrypted storage of my documents.
-            </span>
-          </label>
+          <Checkbox
+            required
+            label={
+              <>
+                I agree to the{' '}
+                <a href="#" className="font-semibold text-ink underline underline-offset-4">
+                  Terms
+                </a>{' '}
+                and{' '}
+                <a href="#" className="font-semibold text-ink underline underline-offset-4">
+                  Privacy Policy
+                </a>
+                , including encrypted storage of my documents.
+              </>
+            }
+          />
 
-          <button
+          <Button
             type="submit"
-            disabled={loading || !checks.every((c) => c.ok)}
-            className="group flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-50"
+            variant="accent"
+            size="lg"
+            block
+            loading={loading}
+            disabled={!checks.every((c) => c.ok)}
+            iconRight={<ArrowRight className="h-4 w-4" />}
           >
-            {loading ? 'Creating...' : 'Create account'}
-            {!loading && <ArrowRight className="h-4.5 w-4.5 transition-transform group-hover:translate-x-0.5" />}
-          </button>
+            Create account
+          </Button>
         </form>
 
-        <p className="mt-8 text-center text-sm text-ink-500">
+        <p className="t-sm mt-9 text-center text-ink-muted">
           Already have an account?{' '}
-          <Link to="/login" className="font-semibold text-brand-600 hover:text-brand-700">
+          <Link to="/login" className="font-semibold text-ink underline underline-offset-4 hover:text-accent">
             Sign in
           </Link>
         </p>

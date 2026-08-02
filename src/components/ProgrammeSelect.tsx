@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { PROGRAMMES, PROGRAMME_GROUPS } from '../data/mock'
+import { Input, Select } from './ui'
 
 const OTHER = '__other__'
 
@@ -8,8 +9,7 @@ interface ProgrammeSelectProps {
   onChange: (value: string) => void
   /** Set to submit the value through an uncontrolled <form> (Settings). */
   name?: string
-  /** Styling for both the select and the free-text input. */
-  className?: string
+  id?: string
 }
 
 /**
@@ -18,12 +18,13 @@ interface ProgrammeSelectProps {
  * that isn't in the catalogue (saved earlier via "Other") reopens in
  * free-text mode with the text intact.
  */
-export function ProgrammeSelect({ value, onChange, name, className }: ProgrammeSelectProps) {
+export function ProgrammeSelect({ value, onChange, name, id }: ProgrammeSelectProps) {
   const [isOther, setIsOther] = useState(() => value !== '' && !PROGRAMMES.includes(value))
 
   return (
     <div className="space-y-2">
-      <select
+      <Select
+        id={id}
         value={isOther ? OTHER : value}
         onChange={(e) => {
           if (e.target.value === OTHER) {
@@ -34,7 +35,6 @@ export function ProgrammeSelect({ value, onChange, name, className }: ProgrammeS
             onChange(e.target.value)
           }
         }}
-        className={className}
       >
         <option value="">Select a programme…</option>
         {PROGRAMME_GROUPS.map((g) => (
@@ -47,13 +47,12 @@ export function ProgrammeSelect({ value, onChange, name, className }: ProgrammeS
           </optgroup>
         ))}
         <option value={OTHER}>Other — my programme isn&apos;t listed</option>
-      </select>
+      </Select>
       {isOther && (
-        <input
+        <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Type your programme, e.g. BSc Meteorology"
-          className={className}
           autoFocus
         />
       )}

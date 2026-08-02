@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+const withAlpha = (v) => `rgb(var(${v}) / <alpha-value>)`
+
 module.exports = {
   darkMode: 'class',
   content: [
@@ -8,43 +10,98 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-        display: ["Plus Jakarta Sans", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ["Inter Tight", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ["Archivo", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       colors: {
-        brand: {
-          50: '#f0fdfa',
-          100: '#ccfbf1',
-          200: '#99f6e4',
-          300: '#5eead4',
-          400: '#2dd4bf',
-          500: '#14b8a6',
-          600: '#0d9488',
-          700: '#0f766e',
-          800: '#115e59',
-          900: '#134e4a',
-          950: '#042f2e',
-        },
-        gold: {
-          300: '#fcd34d',
-          400: '#fbbf24',
-          500: '#f59e0b',
-          600: '#d97706',
+        canvas: withAlpha('--canvas'),
+        surface: {
+          DEFAULT: withAlpha('--surface'),
+          sunken: withAlpha('--surface-sunken'),
         },
         ink: {
-          50: '#f8fafc',
-          100: '#f1f5f9',
-          200: '#e2e8f0',
-          300: '#cbd5e1',
-          400: '#94a3b8',
-          500: '#64748b',
-          600: '#475569',
-          700: '#334155',
-          800: '#1e293b',
-          900: '#0f172a',
-          950: '#020617',
-        }
-      }
+          DEFAULT: withAlpha('--ink'),
+          secondary: withAlpha('--ink-secondary'),
+          muted: withAlpha('--ink-muted'),
+          faint: withAlpha('--ink-faint'),
+        },
+        rule: {
+          DEFAULT: withAlpha('--rule'),
+          strong: withAlpha('--rule-strong'),
+        },
+        accent: {
+          DEFAULT: withAlpha('--accent'),
+          hover: withAlpha('--accent-hover'),
+          soft: withAlpha('--accent-soft'),
+          on: withAlpha('--on-accent'),
+        },
+        band: {
+          DEFAULT: withAlpha('--band'),
+          on: withAlpha('--on-band'),
+          muted: withAlpha('--on-band-muted'),
+          rule: withAlpha('--band-rule'),
+        },
+        state: {
+          neutral: withAlpha('--state-neutral'),
+          progress: withAlpha('--state-progress'),
+          attention: withAlpha('--state-attention'),
+          positive: withAlpha('--state-positive'),
+          negative: withAlpha('--state-negative'),
+          special: withAlpha('--state-special'),
+          'neutral-soft': withAlpha('--state-neutral-soft'),
+          'progress-soft': withAlpha('--state-progress-soft'),
+          'attention-soft': withAlpha('--state-attention-soft'),
+          'positive-soft': withAlpha('--state-positive-soft'),
+          'negative-soft': withAlpha('--state-negative-soft'),
+          'special-soft': withAlpha('--state-special-soft'),
+        },
+      },
+      borderRadius: {
+        sm: 'var(--r-sm)',
+        DEFAULT: 'var(--r-sm)',
+        md: 'var(--r-md)',
+        lg: 'var(--r-lg)',
+        xl: 'var(--r-xl)',
+      },
+      // The old design leaned on `h-4.5`/`w-4.5`, which is not on Tailwind's
+      // default scale and silently compiled to nothing in 20 places.
+      spacing: {
+        '4.5': '1.125rem',
+        '18': '4.5rem',
+      },
+      maxWidth: {
+        content: '1400px',
+        prose: '68ch',
+      },
+      // This system separates surfaces with hairlines, not elevation.
+      // The only shadow that exists is for things floating above the page.
+      boxShadow: {
+        overlay: '0 24px 60px -16px rgb(var(--overlay) / 0.28), 0 8px 20px -8px rgb(var(--overlay) / 0.16)',
+        none: 'none',
+      },
+      transitionTimingFunction: {
+        DEFAULT: 'cubic-bezier(0.2, 0, 0, 1)',
+        brand: 'cubic-bezier(0.2, 0, 0, 1)',
+      },
+      keyframes: {
+        marquee: {
+          from: { transform: 'translateX(0)' },
+          to: { transform: 'translateX(-50%)' },
+        },
+        'skeleton-sweep': {
+          '100%': { transform: 'translateX(100%)' },
+        },
+        'dot-pulse': {
+          '0%, 80%, 100%': { opacity: '0.25', transform: 'translateY(0)' },
+          '40%': { opacity: '1', transform: 'translateY(-3px)' },
+        },
+      },
+      animation: {
+        marquee: 'marquee 42s linear infinite',
+        'skeleton-sweep': 'skeleton-sweep 1.6s infinite',
+        'dot-pulse': 'dot-pulse 1.2s ease-in-out infinite',
+      },
     },
   },
   plugins: [],
