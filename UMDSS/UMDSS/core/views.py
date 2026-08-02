@@ -585,9 +585,14 @@ def mark_all_read(request):
 # ── AI Assistant (Groq) ───────────────────────────────
 
 import logging
+import re as _re
 from django.http import StreamingHttpResponse
 
-GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
+# Overridable so the streaming path can be exercised against a local stand-in,
+# or pointed at another OpenAI-compatible provider, without a code change.
+GROQ_URL = os.environ.get(
+    'GROQ_BASE_URL', 'https://api.groq.com/openai/v1/chat/completions'
+)
 
 # Groq's flagship open-weight reasoning model (Kimi K2 and Llama 4 Scout were
 # deprecated in favour of this in 2026). Overridable so we can swap models
@@ -741,13 +746,22 @@ def _assistant_context(user):
     return "\n".join(lines)
 
 
+# Written as escapes on purpose. Spelling these out as literal characters once
+# cost us the whole function: a find-and-replace over em dashes rewrote them
+# inside this very pattern, leaving [--], which then ate every spaced hyphen in
+# the model's output, markdown bullets included.
+_EM_DASH_SPACED = _re.compile('\\s+[\u2014\u2013]\\s+')
+
+
 def _no_em_dashes(text):
     """Safety net for the 'no em dashes' rule: a spaced em/en dash reads as a
     comma, a tight one as a hyphen. The system prompt bans them; this catches
-    any that slip through so downloaded documents never contain one."""
-    import re
-    text = re.sub(r'\s+[--]\s+', ', ', text)
-    return text.replace('-', '-').replace('-', '-')
+    any that slip through so downloaded documents never contain one.
+
+    Ordinary hyphens are left alone.
+    """
+    text = _EM_DASH_SPACED.sub(', ', text)
+    return text.replace('\u2014', '-').replace('\u2013', '-')
 
 
 def _build_assistant_payload(request):

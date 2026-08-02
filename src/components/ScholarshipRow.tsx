@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { ArrowRight, CalendarClock, Check, Users, X } from 'lucide-react'
 import type { MatchResult, Scholarship } from '../data/types'
 import { daysUntil, formatDeadline } from '../data/mock'
+import { formatDaysLeft } from '../lib/format'
 import { ScholarshipLogo } from './ScholarshipLogo'
 import { Badge, ScoreRing, StatusPill, UnverifiedBadge } from './ui'
 import { cn } from '../lib/cn'
@@ -35,7 +36,9 @@ export function ScholarshipRow({ scholarship, match }: { scholarship: Scholarshi
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <h3 className="t-h3 truncate text-ink transition-colors group-hover:text-accent">
+              {/* Award titles run very long, so a phone gets two lines rather
+                  than one truncated line that names nothing. */}
+              <h3 className="t-h3 line-clamp-2 text-ink transition-colors group-hover:text-accent sm:truncate">
                 {scholarship.name}
               </h3>
               <p className="t-sm mt-0.5 truncate text-ink-muted">
@@ -73,7 +76,7 @@ export function ScholarshipRow({ scholarship, match }: { scholarship: Scholarshi
                       closed ? 'text-ink-faint' : closingSoon ? 'text-state-negative' : 'text-ink-muted',
                     )}
                   >
-                    {closed ? '(closed)' : `(${d}d)`}
+                    {`· ${formatDaysLeft(d)}`}
                   </span>
                 )}
               </dd>

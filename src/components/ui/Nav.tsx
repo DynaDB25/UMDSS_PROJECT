@@ -23,7 +23,15 @@ export function Tabs<T extends string>({
   className?: string
 }) {
   return (
-    <div className={cn('-mb-px flex gap-1 overflow-x-auto border-b border-rule', className)} role="tablist">
+    <div
+      className={cn(
+        '-mb-px flex gap-1 overflow-x-auto border-b border-rule',
+        // A visible scrollbar under a tab strip reads as a rendering fault
+        '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+        className,
+      )}
+      role="tablist"
+    >
       {items.map((item) => {
         const active = item.value === value
         return (

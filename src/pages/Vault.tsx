@@ -236,9 +236,15 @@ export default function Vault() {
                 End-to-end encrypted storage
               </p>
               <p className="t-sm mt-1 text-band-muted">
-                <span className="tabular">{verified}</span> of{' '}
-                <span className="tabular">{documents.length}</span> documents verified · TLS in
-                transit · AES-256 at rest
+                {documents.length === 0 ? (
+                  'Nothing stored yet'
+                ) : (
+                  <>
+                    <span className="tabular">{verified}</span> of{' '}
+                    <span className="tabular">{documents.length}</span> verified
+                  </>
+                )}
+                {' · TLS in transit · AES-256 at rest'}
               </p>
             </div>
             <div className="hidden shrink-0 text-right sm:block">

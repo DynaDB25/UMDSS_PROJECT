@@ -4,6 +4,7 @@ import { Compass, Search, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { api } from '../api/endpoints'
 import type { MatchResult, Scholarship } from '../data/types'
 import { daysUntil } from '../data/mock'
+import { formatCedis } from '../lib/format'
 import { ScholarshipRow } from '../components/ScholarshipRow'
 import { PageListSkeleton } from '../components/skeletons'
 import {
@@ -22,7 +23,6 @@ type Tab = 'foryou' | 'all'
 const PROVIDER_FILTERS = ['All', 'Government', 'Corporate', 'International', 'Foundation'] as const
 type ProviderFilter = (typeof PROVIDER_FILTERS)[number]
 
-const cedis = (n: number) => `GH₵ ${n.toLocaleString('en-GB')}`
 
 /**
  * Discovery. Browsing the catalogue and reading your ranked matches used to be
@@ -64,6 +64,12 @@ export default function Scholarships() {
 
   const visibleMatches = useMemo(() => {
     const q = query.trim().toLowerCase()
+    // An award whose deadline has passed is not a top result whatever it
+    // scores, so open ones always sort above closed ones.
+    const open = (deadline: string | null) => {
+      const d = daysUntil(deadline)
+      return !Number.isFinite(d) || d >= 0
+    }
     return matches
       .filter((m) => (strongOnly ? m.status === 'Strong match' : m.status !== 'Not eligible'))
       .filter((m) => provider === 'All' || m.scholarship.providerType === provider)
@@ -73,7 +79,12 @@ export default function Scholarships() {
           m.scholarship.name.toLowerCase().includes(q) ||
           m.scholarship.provider.toLowerCase().includes(q),
       )
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => {
+        const oa = open(a.scholarship.deadline)
+        const ob = open(b.scholarship.deadline)
+        if (oa !== ob) return oa ? -1 : 1
+        return b.score - a.score
+      })
   }, [matches, strongOnly, provider, query])
 
   const visibleAll = useMemo(() => {
@@ -114,7 +125,7 @@ export default function Scholarships() {
           detail={`${matches.filter((m) => m.status === 'Strong match').length} strong`}
           icon={<Sparkles />}
         />
-        <Stat label="Potential funding" value={cedis(potentialFunding)} />
+        <Stat label="Potential funding" value={formatCedis(potentialFunding)} />
         <Stat
           label="Closing in 14 days"
           value={closingSoon}
@@ -145,17 +156,28 @@ export default function Scholarships() {
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        {/* One scrollable row on a phone. Wrapping five chips plus the toggle
+            pushed the first result 200px down the page. */}
+        <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden">
           {PROVIDER_FILTERS.map((f) => (
-            <FilterChip key={f} active={provider === f} onClick={() => setProvider(f)}>
+            <FilterChip
+              key={f}
+              active={provider === f}
+              onClick={() => setProvider(f)}
+              className="shrink-0"
+            >
               {f}
             </FilterChip>
           ))}
           {tab === 'foryou' && (
             <>
-              <span className="mx-1 hidden h-5 w-px bg-rule sm:block" aria-hidden />
-              <FilterChip active={strongOnly} onClick={() => setStrongOnly((s) => !s)}>
-                Strong matches only
+              <span className="mx-1 hidden h-5 w-px shrink-0 bg-rule sm:block" aria-hidden />
+              <FilterChip
+                active={strongOnly}
+                onClick={() => setStrongOnly((s) => !s)}
+                className="shrink-0"
+              >
+                Strong only
               </FilterChip>
             </>
           )}

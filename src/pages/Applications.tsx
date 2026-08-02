@@ -104,7 +104,7 @@ export default function Applications() {
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate font-display text-[0.9375rem] font-bold tracking-tight text-ink">
+                        <p className="line-clamp-2 font-display text-[0.9375rem] font-bold leading-snug tracking-tight text-ink sm:line-clamp-1">
                           {a.scholarshipName}
                         </p>
                         <StatusPill status={a.status} />
@@ -159,9 +159,17 @@ export default function Applications() {
                         className="overflow-hidden border-t border-rule bg-surface-sunken"
                       >
                         <div className="grid gap-8 px-4 py-6 sm:px-5 lg:grid-cols-3">
-                          {/* Timeline */}
+                          {/* Timeline. Guarded: an application with no steps
+                              recorded would otherwise render a bare heading
+                              over nothing at all. */}
                           <div className="lg:col-span-2">
                             <h3 className="t-overline text-ink-muted">Application timeline</h3>
+                            {(a.timeline || []).length === 0 ? (
+                              <p className="t-sm mt-3 text-ink-muted">
+                                No steps recorded yet. They appear here as this application moves
+                                through the funder&apos;s process.
+                              </p>
+                            ) : (
                             <ol className="mt-4 ml-[9px] space-y-5 border-l border-rule-strong pl-6">
                               {(a.timeline || []).map((t: any) => (
                                 <li key={t.label} className="relative">
@@ -188,6 +196,7 @@ export default function Applications() {
                                 </li>
                               ))}
                             </ol>
+                            )}
                           </div>
 
                           {/* Side panel */}

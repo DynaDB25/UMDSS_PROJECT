@@ -28,6 +28,17 @@ const isDownloadable = (text: string) => text.trim().length > 240
 
 const INTERVIEW_QUESTIONS = 6
 
+/**
+ * Message ids must be unique.
+ *
+ * These were derived from Date.now() alone, and starting an interview creates
+ * the user turn and the bot placeholder in the same millisecond. The ids
+ * collided, so every streamed chunk was appended to the student's own message
+ * instead of the panel's reply.
+ */
+let messageSeq = 0
+const nextId = () => `m-${Date.now()}-${++messageSeq}`
+
 const greetingMessage = (name: string): ChatMessage => ({
   id: 'm-1',
   role: 'bot',
@@ -83,28 +94,80 @@ function renderInline(text: string) {
   )
 }
 
+type Block =
+  | { kind: 'para'; text: string }
+  | { kind: 'bullet'; text: string }
+  | { kind: 'heading'; text: string }
+  | { kind: 'space' }
+
+/**
+ * Group raw model output into blocks.
+ *
+ * Models often hard-wrap prose at ~80 columns. Treating each source line as its
+ * own paragraph put a gap after every wrapped line, so consecutive prose lines
+ * are joined back into one paragraph and only a blank line starts a new one.
+ */
+function toBlocks(text: string): Block[] {
+  const blocks: Block[] = []
+  let para: string[] = []
+
+  const flush = () => {
+    if (para.length) {
+      blocks.push({ kind: 'para', text: para.join(' ') })
+      para = []
+    }
+  }
+
+  for (const line of text.split('\n')) {
+    if (line.trim() === '') {
+      flush()
+      // Collapse runs of blank lines into a single gap.
+      if (blocks.length && blocks[blocks.length - 1].kind !== 'space') {
+        blocks.push({ kind: 'space' })
+      }
+      continue
+    }
+    const heading = line.match(/^#{1,6}\s+(.*)$/)
+    if (heading) {
+      flush()
+      blocks.push({ kind: 'heading', text: heading[1] })
+      continue
+    }
+    const bullet = line.match(/^\s*(?:[-*•]|\d+\.)\s+(.*)$/)
+    if (bullet) {
+      flush()
+      blocks.push({ kind: 'bullet', text: bullet[1] })
+      continue
+    }
+    para.push(line.trim())
+  }
+  flush()
+
+  // A trailing gap adds nothing but whitespace under the message.
+  while (blocks.length && blocks[blocks.length - 1].kind === 'space') blocks.pop()
+  return blocks
+}
+
 // Lightweight formatter for LLM output: headings, bullets, blank-line spacing.
 function MessageBody({ text }: { text: string }) {
   return (
     <div className="space-y-1">
-      {text.split('\n').map((line, i) => {
-        if (line.trim() === '') return <div key={i} className="h-2" />
-        const header = line.match(/^#{1,6}\s+(.*)$/)
-        if (header)
+      {toBlocks(text).map((b, i) => {
+        if (b.kind === 'space') return <div key={i} className="h-2.5" />
+        if (b.kind === 'heading')
           return (
             <p key={i} className="font-display font-bold tracking-tight text-ink">
-              {renderInline(header[1])}
+              {renderInline(b.text)}
             </p>
           )
-        const bullet = line.match(/^\s*(?:[-*•]|\d+\.)\s+(.*)$/)
-        if (bullet)
+        if (b.kind === 'bullet')
           return (
             <div key={i} className="flex gap-2.5">
               <span className="mt-[7px] h-1 w-1 shrink-0 rotate-45 bg-current opacity-45" aria-hidden />
-              <span className="min-w-0 flex-1">{renderInline(bullet[1])}</span>
+              <span className="min-w-0 flex-1">{renderInline(b.text)}</span>
             </div>
           )
-        return <p key={i}>{renderInline(line)}</p>
+        return <p key={i}>{renderInline(b.text)}</p>
       })}
     </div>
   )
@@ -167,7 +230,7 @@ export default function Assistant() {
    */
   const requestReply = useCallback(
     async (convo: ChatMessage[], opts?: { mode?: 'interview'; target?: string }) => {
-      const botId = `m-${Date.now()}`
+      const botId = nextId()
       const controller = new AbortController()
       abortRef.current = controller
 
@@ -235,7 +298,7 @@ export default function Assistant() {
 
   const sendMessage = (text: string) => {
     if (!text.trim() || isStreaming) return
-    const userMsg: ChatMessage = { id: `m-${Date.now()}`, role: 'user', text: text.trim() }
+    const userMsg: ChatMessage = { id: nextId(), role: 'user', text: text.trim() }
     const next = [...messages, userMsg]
     setMessages(next)
     setInput('')
@@ -248,7 +311,7 @@ export default function Assistant() {
     setShowPicker(false)
     setInterview({ active: true, target })
     const opener: ChatMessage = {
-      id: `m-${Date.now()}`,
+      id: nextId(),
       role: 'user',
       text: `Start the mock interview for ${target}. I am ready.`,
     }

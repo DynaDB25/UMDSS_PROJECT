@@ -25,6 +25,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { downloadPdf } from '../lib/exportDoc'
 import { classifyApplyRoute } from '../lib/applyForm'
 import { daysUntil, formatDeadline } from '../data/mock'
+import { formatDaysLeft, isUrgent } from '../lib/format'
 import { cn } from '../lib/cn'
 import { Alert, Badge, Button, ButtonLink, Card, EmptyState, StatusPill } from '../components/ui'
 
@@ -273,10 +274,21 @@ export default function ScholarshipDetail() {
   })()
 
   const heroStats = [
-    { icon: Wallet, label: 'Award', value: s.amount },
-    { icon: CalendarClock, label: 'Deadline', value: formatDeadline(s.deadline) },
-    { icon: Users, label: 'Slots', value: `${s.slots}` },
-    { icon: Sparkles, label: 'Applicants', value: s.applicants.toLocaleString() },
+    { icon: Wallet, label: 'Award', value: s.amount, detail: '' },
+    {
+      icon: CalendarClock,
+      label: 'Deadline',
+      value: formatDeadline(s.deadline),
+      // The date alone makes a student do the arithmetic. Say it outright.
+      detail: Number.isFinite(d) ? (d < 0 ? 'Closed' : formatDaysLeft(d) + ' left') : '',
+    },
+    { icon: Users, label: 'Slots', value: s.slots > 0 ? `${s.slots}` : 'Not stated', detail: '' },
+    {
+      icon: Sparkles,
+      label: 'Applicants',
+      value: s.applicants > 0 ? s.applicants.toLocaleString() : 'Not tracked',
+      detail: '',
+    },
   ]
 
   return (
@@ -331,6 +343,16 @@ export default function ScholarshipDetail() {
               <dd className="tabular mt-2 font-display text-base font-extrabold leading-tight tracking-tight text-band-on sm:text-lg">
                 {x.value}
               </dd>
+              {x.detail && (
+                <dd
+                  className={cn(
+                    'tabular t-xs mt-1 font-semibold',
+                    isUrgent(d) ? 'text-accent' : 'text-band-muted',
+                  )}
+                >
+                  {x.detail}
+                </dd>
+              )}
             </div>
           ))}
         </dl>
