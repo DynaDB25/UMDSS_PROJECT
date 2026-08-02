@@ -46,7 +46,7 @@ export function ProgrammeSelect({ value, onChange, name, id }: ProgrammeSelectPr
             ))}
           </optgroup>
         ))}
-        <option value={OTHER}>Other — my programme isn&apos;t listed</option>
+        <option value={OTHER}>Other, my programme isn&apos;t listed</option>
       </Select>
       {isOther && (
         <Input

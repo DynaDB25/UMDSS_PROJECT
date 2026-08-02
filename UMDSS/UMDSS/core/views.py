@@ -316,7 +316,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             # this 'Submitted' would be a lie. It stays a draft until they
             # confirm they sent it to the provider.
             status='Draft',
-            submitted_on='—',
+            submitted_on='-',
             progress=progress,
             timeline=timeline,
             attached_documents=attached,
@@ -575,6 +575,7 @@ def mark_all_read(request):
 # ── AI Assistant (Groq) ───────────────────────────────
 
 import logging
+from django.http import StreamingHttpResponse
 
 GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
@@ -584,25 +585,36 @@ GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b'
 
 ASSISTANT_SYSTEM = (
-    "You are the ScholarCircle Decision Bot, an expert, warm and practical adviser who helps "
-    "Ghanaian students find, win and manage scholarships. You compare awards, check eligibility, "
-    "plan deadlines, write and sharpen essays, personal statements and motivation letters, and run "
-    "world-class interview preparation.\n\n"
+    "You are the ScholarCircle Decision Bot. Think of yourself as a sharp, warm Ghanaian mentor who "
+    "has sat on scholarship panels and now helps students win them. You compare awards, check "
+    "eligibility, plan deadlines, write and sharpen essays and personal statements, and run mock "
+    "interviews.\n\n"
 
-    "VOICE (write like a real human mentor, never like a chatbot):\n"
-    "- Sound like a sharp, encouraging Ghanaian mentor talking to a student. Warm, direct, specific.\n"
-    "- Vary your sentence length. Mix short punchy lines with longer ones so it reads naturally.\n"
-    "- Never use em dashes or en dashes. Use commas, full stops, colons, brackets or the word 'and' "
-    "instead. This is a hard rule.\n"
-    "- Ban AI filler and cliches: no 'in today's fast-paced world', 'it is important to note', "
-    "'delve', 'tapestry', 'navigate the landscape', 'unlock your potential', 'leverage', 'moreover', "
-    "'furthermore', 'embark on a journey'. Just say the thing plainly.\n"
-    "- Do not over-hedge or pad. Every sentence should earn its place.\n\n"
+    "HOW YOU TALK. This matters more than anything else here.\n"
+    "- Talk like a person, not a report. Default to plain prose in short paragraphs. A good answer "
+    "often reads like something you would actually say out loud.\n"
+    "- Do not open with filler. No 'Great question', no 'Certainly', no restating what they just "
+    "asked. Start with the answer.\n"
+    "- Do not put a heading on a short reply, and do not bullet things that are not a list. Bullets "
+    "are for genuine lists of three or more parallel items. Two facts belong in a sentence.\n"
+    "- Vary your rhythm. Mix short punchy lines with longer ones. Contractions are fine.\n"
+    "- Never use em dashes or en dashes. Use commas, full stops, colons, brackets or the word 'and'. "
+    "This is a hard rule.\n"
+    "- Banned filler: 'in today's fast-paced world', 'it is important to note', 'delve', 'tapestry', "
+    "'navigate the landscape', 'unlock your potential', 'leverage', 'moreover', 'furthermore', "
+    "'embark on a journey', 'let's dive in'. Just say the thing.\n"
+    "- Match their energy and length. A one line question gets a couple of sentences, not an essay. "
+    "Go long only when they ask for something long.\n"
+    "- Do not end every message with a cheerful offer to help further. Close with a real next step, "
+    "or a real question, or just stop.\n"
+    "- If one sharp question would make your answer twice as useful, ask it instead of guessing. One "
+    "question, not a list of five.\n"
+    "- Use their first name occasionally, the way a mentor would. Not in every message.\n\n"
 
     "ACCURACY:\n"
     "- Ground every answer in the STUDENT DATA below. Never invent scholarships, amounts, deadlines "
     "or eligibility rules that are not in that data. If something isn't there, say so plainly and "
-    "point the student to the Scholarships or Matches page.\n"
+    "point the student to the Scholarships page.\n"
     "- Money is in Ghana Cedis (GH₵); use Ghanaian/UK date style (day month year).\n"
     "- Listings flagged UNVERIFIED may be out of date, so tell the student to confirm those details "
     "on the provider's official website before relying on them.\n"
@@ -611,27 +623,45 @@ ASSISTANT_SYSTEM = (
 
     "WRITING DOCUMENTS (essays, personal statements, motivation letters, cover letters, CVs):\n"
     "- Write in the student's own authentic voice, grounded in their real profile, programme, region "
-    "and goals. Make it specific and personal, not generic.\n"
-    "- If you are missing details that would make the piece strong (their story, achievements, "
-    "challenges overcome, career goal, why this funder), either ask 2 to 3 sharp questions first, or "
-    "write a strong full draft and mark anything you had to assume with [square brackets] for them to "
-    "confirm or replace.\n"
-    "- Match the length and format the scholarship expects. Write documents as flowing prose in real "
-    "paragraphs, not bullet points. Give them a clear title line.\n"
-    "- After delivering a document, remind the student they can download it as PDF or Word using the "
-    "download button on your message, then edit and submit it.\n\n"
+    "and goals. Specific and personal, never generic.\n"
+    "- If you are missing something that would make the piece strong, either ask two or three sharp "
+    "questions first, or write the full draft and mark assumptions in [square brackets].\n"
+    "- Documents are flowing prose in real paragraphs, never bullet points. Give a clear title line.\n"
+    "- After delivering a document, tell them once that they can download it as PDF or Word from the "
+    "button on your message.\n"
+)
 
-    "INTERVIEW PREP (make this genuinely excellent):\n"
-    "- Tailor likely questions to the specific scholarship and funder, not generic ones.\n"
-    "- Give model answers using the STAR method (Situation, Task, Action, Result) built from the "
-    "student's real background.\n"
-    "- Offer to run a realistic mock interview: ask one question at a time, wait for their answer, "
-    "then give honest, specific feedback and a stronger version.\n"
-    "- Cover logistics too: what to bring, how to dress, timing, and three strong questions the "
-    "student should ask the panel.\n\n"
-
-    "FORMAT: For advice and comparisons, be skimmable with short paragraphs, bullets and bold key "
-    "facts, and finish with a clear next step. For documents, use flowing prose. Remember: no em dashes.\n"
+# Appended when the student starts a live mock interview. The protocol is
+# strict because the whole value is in it behaving like a real panel: one
+# question, silence, then honest feedback.
+INTERVIEW_PROTOCOL = (
+    "\n\nYOU ARE NOW RUNNING A LIVE MOCK INTERVIEW. Follow this exactly.\n\n"
+    "Rules of the room:\n"
+    "- Ask exactly ONE question per message, then stop. Never ask two. Never answer it yourself.\n"
+    "- Stay in character as a panel member for the question itself. Be courteous but probing.\n"
+    "- The interview runs for six questions, then a debrief.\n\n"
+    "Question arc, tailored to the specific scholarship and the student's real profile:\n"
+    "1. An opener about who they are and why this award.\n"
+    "2. Their academic record, including any weak spot visible in their data.\n"
+    "3. A behavioural question about leadership, service or overcoming a setback.\n"
+    "4. A question about their field and where they want to take it.\n"
+    "5. A hard one. Press on a genuine gap, a competing candidate, or what they would do if they "
+    "did not get the funding.\n"
+    "6. 'What would you like to ask us?'\n\n"
+    "After every answer they give, before the next question, respond in exactly this shape:\n"
+    "**Score: N/10**\n"
+    "One short paragraph on what genuinely worked. Be specific, quote their words back.\n"
+    "One short paragraph on the single biggest fix. Not five fixes, the one that matters most.\n"
+    "**Sharper version**\n"
+    "Rewrite their answer the way a strong candidate would say it, in their voice, using their real "
+    "details from the STUDENT DATA. Keep it speakable, around 45 to 90 seconds.\n"
+    "Then ask the next question, on its own line, prefixed with **Question N of 6**.\n\n"
+    "If they give a thin or one line answer, do not accept it. Score it honestly, say what is "
+    "missing, and ask them to try that same question again before moving on.\n\n"
+    "After question six, close with **Debrief**: their overall score out of 10, the two things to "
+    "practise before the real panel, and three strong questions they should ask on the day. Then "
+    "stop and offer to run it again.\n\n"
+    "Open the session with a one line greeting, then **Question 1 of 6**. No preamble beyond that.\n"
 )
 
 
@@ -668,7 +698,7 @@ def _assistant_context(user):
             bits.append(f"financial need={profile.need_level}")
         lines.append("Profile: " + (", ".join(bits) if bits else "started but mostly empty"))
     else:
-        lines.append("Profile: not completed — encourage finishing onboarding for accurate matching.")
+        lines.append("Profile: not completed, encourage finishing onboarding for accurate matching.")
 
     matches = list(
         MatchResult.objects.filter(student=user)
@@ -684,7 +714,7 @@ def _assistant_context(user):
             gap = f"; not yet met: {', '.join(unmet)}" if unmet else ""
             flag = " [UNVERIFIED]" if s.origin == 'curated' else ""
             lines.append(
-                f"- {s.name} ({s.provider}) — {s.amount}; {m.status} {m.score}%; "
+                f"- {s.name} ({s.provider}), {s.amount}; {m.status} {m.score}%; "
                 f"deadline {deadline}{flag}{gap}"
             )
     else:
@@ -706,31 +736,27 @@ def _no_em_dashes(text):
     comma, a tight one as a hyphen. The system prompt bans them; this catches
     any that slip through so downloaded documents never contain one."""
     import re
-    text = re.sub(r'\s+[—–]\s+', ', ', text)
-    return text.replace('—', '-').replace('–', '-')
+    text = re.sub(r'\s+[--]\s+', ', ', text)
+    return text.replace('-', '-').replace('-', '-')
 
 
-@api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
-def assistant_chat(request):
-    """POST /api/assistant/chat/ → a grounded LLM reply via Groq.
+def _build_assistant_payload(request):
+    """Validate the request and assemble the Groq payload.
 
-    Body: {"messages": [{"role": "user"|"assistant", "content": str}, ...]}
-    The API key stays server-side (GROQ_API_KEY env); the client never sees it.
+    Returns (payload, None) on success or (None, Response) on failure, so both
+    the buffered and streaming endpoints share exactly one set of rules.
     """
-    import requests as http
-
     api_key = os.environ.get('GROQ_API_KEY')
     if not api_key:
-        return Response(
-            {'detail': "The assistant isn't switched on yet — the server needs a GROQ_API_KEY."},
+        return None, Response(
+            {'detail': "The assistant isn't switched on yet, the server needs a GROQ_API_KEY."},
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
     raw = request.data.get('messages', [])
     if not isinstance(raw, list) or not raw:
-        return Response({'detail': 'messages must be a non-empty list.'},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return None, Response({'detail': 'messages must be a non-empty list.'},
+                              status=status.HTTP_400_BAD_REQUEST)
 
     # Keep only well-formed, recent turns to bound token usage.
     history = []
@@ -743,17 +769,47 @@ def assistant_chat(request):
             history.append({'role': role, 'content': content[:4000]})
 
     if not history or history[-1]['role'] != 'user':
-        return Response({'detail': 'The last message must come from the user.'},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return None, Response({'detail': 'The last message must come from the user.'},
+                              status=status.HTTP_400_BAD_REQUEST)
 
     system = ASSISTANT_SYSTEM + "\n\nSTUDENT DATA:\n" + _assistant_context(request.user)
+
+    # A live mock interview needs a much stricter protocol than open chat.
+    if request.data.get('mode') == 'interview':
+        system += INTERVIEW_PROTOCOL
+        target = (request.data.get('scholarship') or '').strip()
+        if target:
+            system += f"\nThe student is being interviewed for: {target[:200]}.\n"
+
     payload = {
         'model': os.environ.get('GROQ_MODEL', DEFAULT_GROQ_MODEL),
         'messages': [{'role': 'system', 'content': system}] + history,
-        'temperature': 0.6,
+        # Slightly warmer than default so the voice doesn't flatten into a
+        # report, which was the complaint about the old answers.
+        'temperature': 0.75,
+        'presence_penalty': 0.3,
         # Roomy enough for a full essay or motivation letter without truncation.
         'max_tokens': 4096,
     }
+    return payload, None
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def assistant_chat(request):
+    """POST /api/assistant/chat/ → a grounded LLM reply via Groq.
+
+    Body: {"messages": [{"role": "user"|"assistant", "content": str}, ...]}
+    The API key stays server-side (GROQ_API_KEY env); the client never sees it.
+
+    Kept as the non-streaming fallback for clients that cannot read a stream.
+    """
+    import requests as http
+
+    api_key = os.environ.get('GROQ_API_KEY')
+    payload, error = _build_assistant_payload(request)
+    if error:
+        return error
 
     try:
         resp = http.post(
@@ -767,7 +823,7 @@ def assistant_chat(request):
                         status=status.HTTP_502_BAD_GATEWAY)
 
     if resp.status_code != 200:
-        # Log safely (Windows consoles are cp1252 — avoid unicode crashes) and
+        # Log safely (Windows consoles are cp1252, avoid unicode crashes) and
         # surface a friendly message rather than leaking provider internals.
         safe = resp.text[:500].encode('ascii', 'replace').decode('ascii')
         logging.getLogger('core').error('Groq error %s: %s', resp.status_code, safe)
@@ -779,6 +835,97 @@ def assistant_chat(request):
     if not reply:
         reply = "I'm not sure how to answer that yet, could you give me a little more detail?"
     return Response({'reply': _no_em_dashes(reply)})
+
+
+# The dash cleaner rewrites ", " to ", ", so a chunk boundary could land mid
+# pattern and let a dash escape. Holding back a few characters guarantees the
+# pattern is fully formed before anything is emitted.
+_STREAM_HOLDBACK = 4
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def assistant_stream(request):
+    """POST /api/assistant/stream/ → the same grounded reply, streamed.
+
+    Emits Server-Sent Events so the answer appears word by word instead of
+    landing as a wall of text after a long pause:
+        data: {"delta": "..."}   incremental text
+        data: {"done": true}     finished
+        data: {"error": "..."}   something went wrong mid-stream
+    """
+    import json as _json
+    import requests as http
+
+    api_key = os.environ.get('GROQ_API_KEY')
+    payload, error = _build_assistant_payload(request)
+    if error:
+        return error
+
+    payload['stream'] = True
+
+    def sse(obj):
+        return f"data: {_json.dumps(obj)}\n\n"
+
+    def event_stream():
+        raw_text = ''
+        sent = 0
+        try:
+            with http.post(
+                GROQ_URL,
+                headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+                json=payload,
+                timeout=120,
+                stream=True,
+            ) as resp:
+                if resp.status_code != 200:
+                    safe = resp.text[:500].encode('ascii', 'replace').decode('ascii')
+                    logging.getLogger('core').error('Groq stream error %s: %s', resp.status_code, safe)
+                    yield sse({'error': 'The assistant had trouble responding. Please try again in a moment.'})
+                    return
+
+                for line in resp.iter_lines(decode_unicode=True):
+                    if not line or not line.startswith('data:'):
+                        continue
+                    body = line[5:].strip()
+                    if body == '[DONE]':
+                        break
+                    try:
+                        chunk = _json.loads(body)
+                    except ValueError:
+                        continue
+                    choices = chunk.get('choices') or [{}]
+                    delta = (choices[0].get('delta') or {}).get('content')
+                    if not delta:
+                        continue
+
+                    raw_text += delta
+                    cleaned = _no_em_dashes(raw_text)
+                    safe_len = max(0, len(cleaned) - _STREAM_HOLDBACK)
+                    if safe_len > sent:
+                        yield sse({'delta': cleaned[sent:safe_len]})
+                        sent = safe_len
+
+            # Flush whatever the holdback was still sitting on.
+            cleaned = _no_em_dashes(raw_text)
+            if len(cleaned) > sent:
+                yield sse({'delta': cleaned[sent:]})
+
+            if not raw_text.strip():
+                yield sse({'delta': "I'm not sure how to answer that yet, could you give me a little more detail?"})
+
+            yield sse({'done': True})
+        except http.RequestException:
+            yield sse({'error': 'The assistant is unreachable right now. Please try again.'})
+        except Exception:  # noqa: BLE001 - a dead stream must not 500 the page
+            logging.getLogger('core').exception('Assistant stream failed')
+            yield sse({'error': 'The assistant stopped unexpectedly. Please try again.'})
+
+    response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+    # Keep proxies and the dev server from buffering the stream into one blob.
+    response['Cache-Control'] = 'no-cache, no-transform'
+    response['X-Accel-Buffering'] = 'no'
+    return response
 
 
 # ── Admin ─────────────────────────────────────────────

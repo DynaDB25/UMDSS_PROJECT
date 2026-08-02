@@ -3,7 +3,7 @@ import { cn } from '../lib/cn'
 
 // Map a scholarship's funder (matched in its name/provider) to an official
 // domain. We look the logo up from that domain at render time, so we don't have
-// to hand-maintain an image URL per scholarship — any new scraped award whose
+// to hand-maintain an image URL per scholarship, any new scraped award whose
 // funder is in this list automatically gets a real logo.
 const FUNDER_DOMAINS: [RegExp, string][] = [
   [/chevening/i, 'chevening.org'],

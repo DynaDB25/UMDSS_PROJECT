@@ -109,7 +109,7 @@ export function LoadingRegion({ label, children }: { label: string; children: Re
 }
 
 /* ------------------------------------------------------------------ *
- * Modal — centred dialog on desktop, bottom sheet on phones
+ * Modal, centred dialog on desktop, bottom sheet on phones
  * ------------------------------------------------------------------ */
 
 export function Modal({

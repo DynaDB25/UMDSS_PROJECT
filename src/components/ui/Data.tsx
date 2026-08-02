@@ -3,7 +3,7 @@ import { cn } from '../../lib/cn'
 
 /**
  * The big-number unit. Stats sit in a hairline-divided row rather than in
- * separate cards — it reads as a data strip instead of a dashboard template.
+ * separate cards, it reads as a data strip instead of a dashboard template.
  */
 export function Stat({
   label,

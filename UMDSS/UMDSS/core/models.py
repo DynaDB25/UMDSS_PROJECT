@@ -71,7 +71,7 @@ class Scholarship(models.Model):
     ORIGINS = [
         ('scraped', 'Scraped from live site'),
         ('seeded', 'Seeded demo data'),
-        ('curated', 'Curated fallback — not confirmed against the live site'),
+        ('curated', 'Curated fallback, not confirmed against the live site'),
     ]
 
     LEVEL_SCOPES = [
@@ -197,7 +197,7 @@ class Application(models.Model):
     student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='applications')
     scholarship = models.ForeignKey(Scholarship, on_delete=models.CASCADE, related_name='applications')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Draft')
-    submitted_on = models.CharField(max_length=20, default='—')
+    submitted_on = models.CharField(max_length=20, default='-')
     last_update = models.DateField(auto_now=True)
     progress = models.IntegerField(default=0)
     timeline = models.JSONField(default=list, help_text='List of {label, date, done} objects')
@@ -233,7 +233,7 @@ class VaultDocument(models.Model):
     doc_type = models.CharField(max_length=40, blank=True, default='')
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
     size = models.CharField(max_length=20, blank=True)
-    uploaded_on = models.CharField(max_length=20, default='—')
+    uploaded_on = models.CharField(max_length=20, default='-')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
     linked_applications = models.IntegerField(default=0)
     encrypted = models.BooleanField(default=True)

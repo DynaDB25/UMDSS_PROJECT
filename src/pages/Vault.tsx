@@ -270,7 +270,7 @@ export default function Vault() {
             {documents.length === 0
               ? 'Nothing stored yet.'
               : usedPct >= 90
-                ? 'Almost full — remove old files to free space.'
+                ? 'Almost full, remove old files to free space.'
                 : usedPct >= 60
                   ? `${formatMb(STORAGE_QUOTA_MB - usedMb)} left.`
                   : 'Plenty of room for more documents.'}
@@ -278,7 +278,7 @@ export default function Vault() {
         </Card>
       </div>
 
-      {/* Readiness checklist — what applications actually ask for */}
+      {/* Readiness checklist, what applications actually ask for */}
       <Card as="section">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-rule px-5 py-4">
           <div className="min-w-0">
@@ -440,7 +440,7 @@ export default function Vault() {
 
                 <div className="t-xs mt-auto flex items-center justify-between gap-3 pt-4 text-ink-muted">
                   <span className="tabular truncate">
-                    {doc.uploadedOn === '—' ? 'Not uploaded' : doc.uploadedOn}
+                    {doc.uploadedOn && doc.uploadedOn !== '-' ? doc.uploadedOn : 'Not uploaded'}
                   </span>
                   {doc.linkedApplications > 0 && (
                     <span className="inline-flex shrink-0 items-center gap-1">
@@ -508,7 +508,7 @@ export default function Vault() {
         Only you can open these files. ScholarCircle staff never see their contents.
       </p>
 
-      {/* "What is this document?" — the step that makes the vault smart */}
+      {/* "What is this document?", the step that makes the vault smart */}
       <Modal
         open={!!pendingFile}
         onClose={() => !isUploading && cancelUpload()}
@@ -559,7 +559,7 @@ export default function Vault() {
             </Select>
           </Field>
 
-          <Field label="Label" htmlFor="vault-label" hint="Optional — helps you tell copies apart.">
+          <Field label="Label" htmlFor="vault-label" hint="Optional, helps you tell copies apart.">
             <Input
               id="vault-label"
               value={pendingName}
@@ -570,7 +570,7 @@ export default function Vault() {
 
           {pendingType && haveType(pendingType) && (
             <Alert tone="warning">
-              You already have a document of this type. Uploading another is fine — we use the best
+              You already have a document of this type. Uploading another is fine, we use the best
               match when you apply.
             </Alert>
           )}

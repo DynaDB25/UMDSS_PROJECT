@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { cn } from '../../lib/cn'
 
 /**
- * A card is a hairline and a background step — never a shadow. Elevation only
+ * A card is a hairline and a background step, never a shadow. Elevation only
  * exists for things that genuinely float (modals, menus).
  */
 export function Card({
@@ -19,7 +19,7 @@ export function Card({
   )
 }
 
-/** Initials tile. Square with a small radius — round avatars read generic. */
+/** Initials tile. Square with a small radius, round avatars read generic. */
 export function Avatar({
   initials,
   className,

@@ -309,7 +309,7 @@ class Command(BaseCommand):
             {
                 'scholarship_slug': 'sch-mastercard',
                 'status': 'Draft',
-                'submitted_on': '—',
+                'submitted_on': '-',
                 'progress': 10,
                 'timeline': [
                     {'label': 'Draft started', 'date': '27 Jun 2026', 'done': True},
@@ -337,8 +337,8 @@ class Command(BaseCommand):
             {'name': 'WASSCE Results Slip', 'file_type': 'PDF', 'category': 'Academic', 'size': '840 KB', 'uploaded_on': '02 Jun 2026', 'status': 'Verified', 'linked_applications': 4, 'encrypted': True},
             {'name': 'KNUST Admission Letter', 'file_type': 'PDF', 'category': 'Admission', 'size': '510 KB', 'uploaded_on': '05 Jun 2026', 'status': 'Verified', 'linked_applications': 3, 'encrypted': True},
             {'name': 'Financial Need Statement', 'file_type': 'PDF', 'category': 'Financial', 'size': '320 KB', 'uploaded_on': '11 Jun 2026', 'status': 'Pending', 'linked_applications': 2, 'encrypted': True},
-            {'name': 'Recommendation Letter — Mr. Owusu', 'file_type': 'PDF', 'category': 'Other', 'size': '290 KB', 'uploaded_on': '14 Jun 2026', 'status': 'Verified', 'linked_applications': 1, 'encrypted': True},
-            {'name': 'Proof of District of Origin', 'file_type': 'JPG', 'category': 'Identity', 'size': '1.8 MB', 'uploaded_on': '—', 'status': 'Action needed', 'linked_applications': 0, 'encrypted': True},
+            {'name': 'Recommendation Letter, Mr. Owusu', 'file_type': 'PDF', 'category': 'Other', 'size': '290 KB', 'uploaded_on': '14 Jun 2026', 'status': 'Verified', 'linked_applications': 1, 'encrypted': True},
+            {'name': 'Proof of District of Origin', 'file_type': 'JPG', 'category': 'Identity', 'size': '1.8 MB', 'uploaded_on': '-', 'status': 'Action needed', 'linked_applications': 0, 'encrypted': True},
         ]
 
         for d in docs_data:

@@ -10,7 +10,7 @@ import { cn } from '../lib/cn'
  * One hairline row in the discovery list. Rows rather than cards: it keeps the
  * page scannable and avoids the wall-of-boxes look the old design had.
  *
- * `match` is optional — the same row renders in the browse-all tab, where no
+ * `match` is optional, the same row renders in the browse-all tab, where no
  * eligibility has been computed.
  */
 export function ScholarshipRow({ scholarship, match }: { scholarship: Scholarship; match?: MatchResult }) {

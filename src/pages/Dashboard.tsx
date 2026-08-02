@@ -69,7 +69,7 @@ export default function Dashboard() {
   const strong = eligible.filter((m) => m.status === 'Strong match').length
   const topMatches = [...eligible].sort((a, b) => b.score - a.score).slice(0, 3)
   // Only scholarships with a stated, unexpired deadline belong in a
-  // "closing soon" rail — null deadlines mean the provider doesn't publish one.
+  // "closing soon" rail, null deadlines mean the provider doesn't publish one.
   const upcoming = scholarships
     .filter((s) => s.deadline && daysUntil(s.deadline) >= 0)
     .sort((a, b) => daysUntil(a.deadline) - daysUntil(b.deadline))
@@ -112,7 +112,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Profile strength — the real value, not a decorative arc */}
+          {/* Profile strength, the real value, not a decorative arc */}
           <div className="flex shrink-0 items-center gap-5 border-t border-band-rule pt-6 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
             <ScoreRing score={completion} size={72} className="[&_span]:text-band-on" />
             <div className="min-w-0">
@@ -159,7 +159,7 @@ export default function Dashboard() {
         />
         <Stat
           label="Next deadline"
-          value={upcoming.length > 0 ? `${daysUntil(upcoming[0].deadline)}d` : '—'}
+          value={upcoming.length > 0 ? `${daysUntil(upcoming[0].deadline)}d` : '-'}
           detail={upcoming.length > 0 ? upcoming[0].name : 'Nothing scheduled'}
           icon={<CalendarClock />}
         />

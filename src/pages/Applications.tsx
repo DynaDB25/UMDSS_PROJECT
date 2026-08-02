@@ -256,7 +256,7 @@ export default function Applications() {
                               </Card>
                             )}
 
-                            {a.submittedOn && (
+                            {a.submittedOn && a.submittedOn !== '-' && (
                               <Card className="p-4">
                                 <p className="t-overline text-ink-muted">Submitted on</p>
                                 <p className="tabular mt-1 text-sm font-semibold text-ink">
@@ -286,7 +286,7 @@ export default function Applications() {
         <EmptyState
           icon={<ClipboardList />}
           title="No applications yet"
-          description="When you apply to a scholarship it shows up here so you can track it end to end — from submission through to the final decision."
+          description="When you apply to a scholarship it shows up here so you can track it end to end, from submission through to the final decision."
           action={
             <ButtonLink to="/app/scholarships" variant="accent">
               Browse your matches

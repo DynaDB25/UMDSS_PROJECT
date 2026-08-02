@@ -52,7 +52,7 @@ export default function ScholarshipDetail() {
     async function load() {
       setLoading(true)
       try {
-        // Fetch the scholarship directly by id — the detail page must work for
+        // Fetch the scholarship directly by id, the detail page must work for
         // ANY scholarship, not only ones the student already has a match for.
         const [scholarship, matches, docs, apps, ref] = await Promise.all([
           api.scholarships.get(id!),
@@ -378,7 +378,7 @@ export default function ScholarshipDetail() {
             />
           )}
 
-          {/* Eligibility breakdown — only when we actually have a match */}
+          {/* Eligibility breakdown, only when we actually have a match */}
           {match ? (
             <Card as="section">
               <div className="flex items-center justify-between gap-3 border-b border-rule px-5 py-4">
@@ -435,7 +435,7 @@ export default function ScholarshipDetail() {
 
           {Number.isFinite(d) && d < 0 && (
             <Alert tone="warning" title="This deadline has passed">
-              The funder may still accept late entries or reopen next cycle — check their listing
+              The funder may still accept late entries or reopen next cycle, check their listing
               before applying.
             </Alert>
           )}

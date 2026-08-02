@@ -27,7 +27,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return <RouteFallback />
   if (!user) return <Navigate to="/login" replace />
-  // Non-staff users have no business on the admin console — send them home.
+  // Non-staff users have no business on the admin console, send them home.
   if (!user.is_staff) return <Navigate to="/app" replace />
   return <>{children}</>
 }

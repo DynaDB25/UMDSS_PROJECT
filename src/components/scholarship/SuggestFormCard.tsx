@@ -4,7 +4,7 @@ import { Button, Input } from '../ui'
 
 /**
  * Nothing found automatically. The student who is on the funder's site can see
- * the real link, so let them pass it on — two independent reports promote it
+ * the real link, so let them pass it on, two independent reports promote it
  * platform-wide.
  */
 export function SuggestFormCard({

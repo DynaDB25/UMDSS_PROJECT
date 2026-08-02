@@ -56,7 +56,7 @@ export default function Register() {
         <p className="t-overline text-ink-muted">Get started</p>
         <h1 className="t-h1 mt-3 text-ink">Create your account</h1>
         <p className="t-body mt-3 text-ink-muted">
-          Under two minutes, and there are no application fees — ever.
+          Under two minutes, and there are no application fees, ever.
         </p>
 
         {error && (

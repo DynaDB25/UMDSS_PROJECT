@@ -4,7 +4,7 @@ Produces the score/status/criteria triple that MatchResult stores and the UI
 renders. Kept as pure functions so the rules can be tested without a database.
 
 Design notes:
-  * Students come in two tracks — SHS (in school or completed, heading for
+  * Students come in two tracks, SHS (in school or completed, heading for
     tertiary) and University (enrolled). Scholarships carry a `level_scope`
     saying who they fund. Level is a hard gate: a postgraduate award is simply
     'Not eligible' for an SHS student, not a weak match.
@@ -12,7 +12,7 @@ Design notes:
     aggregate is better (6 is the best possible), so a student qualifies when
     their aggregate is <= the scholarship's `max_aggregate` ceiling. A null
     aggregate (SHS student awaiting results, or an incomplete profile) is
-    treated as *unknown*, not as failure — the match is capped at Partial with
+    treated as *unknown*, not as failure, the match is capped at Partial with
     a criterion telling the student what to add.
   * Several situations cap a match at Partial because we cannot honestly claim
     more: a curated (unverified fallback) listing, a scholarship with no
@@ -44,7 +44,7 @@ def _open_to_all(values) -> bool:
 def _matches_any(value: str, options) -> bool:
     """Loose containment both ways.
 
-    Profile values and scraped values rarely agree exactly — a profile says
+    Profile values and scraped values rarely agree exactly, a profile says
     'BSc Computer Engineering' where a scholarship says 'Computer Engineering'.
     """
     if not value:
@@ -109,7 +109,7 @@ def compute_match(profile, scholarship) -> dict:
         criteria.append({
             'label': 'Student level',
             'met': False,
-            'detail': 'The provider does not state which students this is for — confirm before applying',
+            'detail': 'The provider does not state which students this is for, confirm before applying',
         })
         capped = True
     elif scholarship.level_scope in scopes:
@@ -147,7 +147,7 @@ def compute_match(profile, scholarship) -> dict:
             criteria.append({
                 'label': f'{audience}-only award',
                 'met': True,
-                'detail': f'Reserved for {audience.lower()} — you qualify on this criterion',
+                'detail': f'Reserved for {audience.lower()}, you qualify on this criterion',
             })
         else:
             criteria.append({
@@ -229,14 +229,14 @@ def compute_match(profile, scholarship) -> dict:
         criteria.append({
             'label': 'Listing verified',
             'met': False,
-            'detail': 'Could not be confirmed against the provider — criteria may be out of date',
+            'detail': 'Could not be confirmed against the provider, criteria may be out of date',
         })
         capped = True
     elif not has_published_criteria(scholarship):
         criteria.append({
             'label': 'Eligibility details',
             'met': False,
-            'detail': 'The provider does not publish full criteria here — confirm directly before applying',
+            'detail': 'The provider does not publish full criteria here, confirm directly before applying',
         })
         capped = True
 
@@ -283,7 +283,7 @@ def compute_profile_completion(profile) -> int:
             profile.academic_standing, profile.wassce_aggregate, profile.student_id,
         ]
     else:
-        # No track chosen yet — completion can never exceed the common share.
+        # No track chosen yet, completion can never exceed the common share.
         track = [None] * 6
     fields = [profile.student_type] + common + track
     filled = sum(1 for f in fields if f not in (None, ''))

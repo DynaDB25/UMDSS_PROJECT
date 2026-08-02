@@ -100,7 +100,7 @@ export default function Scholarships() {
         <p className="t-overline text-accent">Discovery</p>
         <h1 className="t-h1 mt-2 text-ink">Scholarships</h1>
         <p className="t-body mt-2 max-w-prose text-ink-muted">
-          Ranked against your WASSCE aggregate, programme, region and financial need — and every
+          Ranked against your WASSCE aggregate, programme, region and financial need, and every
           result shows exactly why you do or do not qualify.
         </p>
       </header>

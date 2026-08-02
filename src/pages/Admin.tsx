@@ -504,7 +504,7 @@ export default function Admin() {
         open={showAdd}
         onClose={() => !saving && setShowAdd(false)}
         title="Add a scholarship"
-        description="No application link needed — the app reads the source page and finds the real form itself."
+        description="No application link needed, the app reads the source page and finds the real form itself."
         size="lg"
         footer={
           <>

@@ -1,5 +1,10 @@
-import { client } from './client'
+import { client, postStream } from './client'
 import type { Scholarship, Application, VaultDocument, AppNotification, MatchResult } from '../data/types'
+
+export type ChatTurn = { role: 'user' | 'assistant'; content: string }
+
+/** `interview` swaps the assistant into a strict one-question-at-a-time panel. */
+export type AssistantOpts = { mode?: 'chat' | 'interview'; scholarship?: string }
 
 export const api = {
   auth: {
@@ -79,8 +84,17 @@ export const api = {
     markAllRead: () => client.post('/notifications/mark-all-read/', {}),
   },
   assistant: {
-    chat: (messages: { role: 'user' | 'assistant'; content: string }[]) =>
-      client.post('/assistant/chat/', { messages }) as Promise<{ reply: string }>,
+    chat: (messages: ChatTurn[], opts?: AssistantOpts) =>
+      client.post('/assistant/chat/', { messages, ...opts }) as Promise<{ reply: string }>,
+    /** Same reply, delivered token by token. `onDelta` fires as text arrives. */
+    stream: (
+      messages: ChatTurn[],
+      onDelta: (text: string) => void,
+      opts?: AssistantOpts & { signal?: AbortSignal },
+    ) => {
+      const { signal, ...rest } = opts || {}
+      return postStream('/assistant/stream/', { messages, ...rest }, onDelta, signal)
+    },
   },
   admin: {
     stats: () => client.get('/admin/stats/'),

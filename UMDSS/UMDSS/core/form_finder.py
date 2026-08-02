@@ -47,7 +47,7 @@ APPLY_PHRASES = [
     'apply for this', 'application link', 'apply',
 ]
 
-# Link text that means "the real listing lives here" — worth one hop.
+# Link text that means "the real listing lives here", worth one hop.
 OFFICIAL_PHRASES = [
     'official website', 'official page', 'official link', 'scholarship page',
     'visit the official', 'for more information', 'more details', 'learn more',

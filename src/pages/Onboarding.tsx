@@ -388,7 +388,7 @@ export default function Onboarding() {
               )}
               {wassceStatus !== '' && wassceStatus !== 'released' && (
                 <Alert tone="warning">
-                  No problem — add your aggregate when results are released. Until then, matches that
+                  No problem, add your aggregate when results are released. Until then, matches that
                   need it will show as pending rather than confirmed.
                 </Alert>
               )}
@@ -463,7 +463,7 @@ export default function Onboarding() {
                   label="WASSCE aggregate (best six)"
                   htmlFor="ob-uagg"
                   required
-                  hint="6 (best) to 54 — still used by many awards."
+                  hint="6 (best) to 54, still used by many awards."
                 >
                   <Input
                     id="ob-uagg"
@@ -575,14 +575,14 @@ export default function Onboarding() {
             <div className="space-y-6">
               <StepIntro
                 title="Review your profile"
-                desc="Your matches are computed from exactly these details — check them before saving."
+                desc="Your matches are computed from exactly these details, check them before saving."
               />
 
               {error && <Alert tone="danger">{error}</Alert>}
 
               <dl className="rule-list border-y border-rule">
                 {reviewRows.map((row) => (
-                  <DataRow key={row.l} label={row.l} value={row.v || '—'} />
+                  <DataRow key={row.l} label={row.l} value={row.v || '-'} />
                 ))}
               </dl>
             </div>

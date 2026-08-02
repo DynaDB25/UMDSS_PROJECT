@@ -39,7 +39,7 @@ const TAB_ITEMS = [
   { value: 'security' as const, label: 'Security' },
 ]
 
-/** Label on the left, control on the right — one rhythm for every settings row. */
+/** Label on the left, control on the right, one rhythm for every settings row. */
 function FieldRow({
   label,
   children,

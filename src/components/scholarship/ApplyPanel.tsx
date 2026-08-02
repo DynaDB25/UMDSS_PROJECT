@@ -198,7 +198,9 @@ export function ApplyPanel({
               <CheckCircle2 className="mx-auto h-7 w-7 text-state-positive" aria-hidden />
               <p className="mt-2.5 text-sm font-semibold text-state-positive">Marked as submitted</p>
               <p className="t-sm mt-1 text-state-positive/80">
-                Submitted on {application.submittedOn}. We will keep it in your tracker.
+                {application.submittedOn && application.submittedOn !== '-'
+                  ? `Submitted on ${application.submittedOn}. We will keep it in your tracker.`
+                  : 'We will keep it in your tracker.'}
               </p>
             </div>
           )

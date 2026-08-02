@@ -7,7 +7,7 @@ import { cn } from '../../lib/cn'
 
 /**
  * Buttons are the only pill-shaped surface in the system. Everything else
- * stays at 4–8px, which is what stops the UI reading as a bubbly template.
+ * stays at 4-8px, which is what stops the UI reading as a bubbly template.
  */
 export const buttonVariants = cva(
   'relative inline-flex select-none items-center justify-center gap-2 rounded-full font-semibold ' +
@@ -18,7 +18,7 @@ export const buttonVariants = cva(
       variant: {
         /** The default call to action: solid ink. */
         primary: 'bg-ink text-canvas hover:bg-ink/85',
-        /** The brand moment. Black type on gold — never white. */
+        /** The brand moment. Black type on gold, never white. */
         accent: 'bg-accent text-accent-on hover:bg-accent-hover',
         /** Secondary action; hairline border, no fill. */
         outline: 'border border-ink text-ink hover:bg-ink hover:text-canvas',
