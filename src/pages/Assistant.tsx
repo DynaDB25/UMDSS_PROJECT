@@ -4,16 +4,14 @@ import {
   Bot,
   Send,
   Sparkles,
-  Lightbulb,
   RefreshCcw,
   ThumbsUp,
   ThumbsDown,
   ArrowRight,
-  MessageSquareText,
   FileText,
   FileType2,
 } from 'lucide-react'
-import { Card, Badge } from '../components/ui'
+import { Alert, Badge, Button, Card, DataRow } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../api/endpoints'
 import { downloadPdf, downloadDocx, deriveTitle } from '../lib/exportDoc'
@@ -47,7 +45,9 @@ const tips = [
 function renderInline(text: string) {
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
     /^\*\*[^*]+\*\*$/.test(part) ? (
-      <strong key={i}>{part.slice(2, -2)}</strong>
+      <strong key={i} className="font-bold">
+        {part.slice(2, -2)}
+      </strong>
     ) : (
       <span key={i}>{part}</span>
     ),
@@ -59,15 +59,20 @@ function MessageBody({ text }: { text: string }) {
   return (
     <div className="space-y-1">
       {text.split('\n').map((line, i) => {
-        if (line.trim() === '') return <div key={i} className="h-1.5" />
+        if (line.trim() === '') return <div key={i} className="h-2" />
         const header = line.match(/^#{1,6}\s+(.*)$/)
-        if (header) return <p key={i} className="font-bold">{renderInline(header[1])}</p>
+        if (header)
+          return (
+            <p key={i} className="font-display font-bold tracking-tight">
+              {renderInline(header[1])}
+            </p>
+          )
         const bullet = line.match(/^\s*(?:[-*•]|\d+\.)\s+(.*)$/)
         if (bullet)
           return (
-            <div key={i} className="flex gap-2">
-              <span className="mt-[3px] text-current opacity-50">•</span>
-              <span className="flex-1">{renderInline(bullet[1])}</span>
+            <div key={i} className="flex gap-2.5">
+              <span className="mt-[7px] h-1 w-1 shrink-0 rotate-45 bg-current opacity-45" aria-hidden />
+              <span className="min-w-0 flex-1">{renderInline(bullet[1])}</span>
             </div>
           )
         return <p key={i}>{renderInline(line)}</p>
@@ -82,7 +87,8 @@ export default function Assistant() {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [greetingMessage(firstName)])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
-  const [feedback, setFeedback] = useState<Record<string, 'up' | 'down'>>({})
+  const [feedback, setFeedback] = useState<Record<string, 'up' | 'down' | undefined>>({})
+  const [exportError, setExportError] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -105,7 +111,10 @@ export default function Assistant() {
     try {
       const payload = convo
         .filter((m) => m.text?.trim())
-        .map((m) => ({ role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant', content: m.text }))
+        .map((m) => ({
+          role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: m.text,
+        }))
       const { reply } = await api.assistant.chat(payload)
       setMessages([...convo, { id: `m-${Date.now()}`, role: 'bot', text: reply }])
     } catch (err: any) {
@@ -132,20 +141,22 @@ export default function Assistant() {
   }
 
   const savePdf = (text: string) => {
+    setExportError('')
     try {
       downloadPdf(deriveTitle(text), text)
     } catch (e) {
       console.error(e)
-      alert('Sorry, I could not create the PDF. Please try again.')
+      setExportError('Sorry, I could not create the PDF. Please try again.')
     }
   }
 
   const saveWord = async (text: string) => {
+    setExportError('')
     try {
       await downloadDocx(deriveTitle(text), text)
     } catch (e) {
       console.error(e)
-      alert('Sorry, I could not create the Word file. Please try again.')
+      setExportError('Sorry, I could not create the Word file. Please try again.')
     }
   }
 
@@ -160,224 +171,256 @@ export default function Assistant() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <div className="space-y-4 lg:col-span-2">
-        {/* Header */}
-        <div className="flex items-center gap-2">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700">
-            <Bot className="h-5 w-5 text-white" />
+    <div className="space-y-6">
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-rule pb-5">
+        <div className="flex min-w-0 items-center gap-3.5">
+          <span
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-sm bg-ink text-canvas"
+            aria-hidden
+          >
+            <Bot className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h1 className="t-h2 text-ink">Decision bot</h1>
+            <p className="t-sm mt-0.5 text-ink-muted">
+              Grounded in your profile, matches and applications
+            </p>
           </div>
-          <div>
-            <h1 className="font-display text-2xl font-extrabold text-ink-900">Decision Bot</h1>
-            <p className="text-sm text-ink-500">AI adviser grounded in your profile &amp; matches</p>
-          </div>
-          <Badge tone="green" className="ml-2">Online</Badge>
         </div>
+        <Badge tone="positive" className="shrink-0">
+          Online
+        </Badge>
+      </header>
 
-        {/* Chat area */}
-        <Card className="flex flex-col" style={{ height: 'calc(100vh - 260px)', minHeight: 420 }}>
-          <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
-            <AnimatePresence initial={false}>
-              {messages.map((m) => (
-                <motion.div
-                  key={m.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className={cn('flex gap-3', m.role === 'user' && 'flex-row-reverse')}
-                >
-                  {m.role === 'bot' && (
-                    <div className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700">
-                      <Bot className="h-4 w-4 text-white" />
-                    </div>
-                  )}
-                  <div
-                    className={cn(
-                      'max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed',
-                      m.role === 'bot' ? 'bg-ink-50 text-ink-800' : 'bg-brand-700 text-white',
-                    )}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="min-w-0 lg:col-span-2">
+          <Card className="flex h-[calc(100dvh-16rem)] min-h-[26rem] flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-6">
+              <AnimatePresence initial={false}>
+                {messages.map((m) => (
+                  <motion.div
+                    key={m.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.24, ease: [0.2, 0, 0, 1] }}
+                    className={cn('flex', m.role === 'user' && 'justify-end')}
                   >
-                    <MessageBody text={m.text} />
+                    {m.role === 'bot' ? (
+                      /* Editorial: the bot speaks as page text behind a gold rule */
+                      <div className="min-w-0 max-w-full border-l-2 border-accent pl-4 sm:pl-5">
+                        <p className="t-overline mb-2 text-ink-muted">Decision bot</p>
+                        <div className="t-body text-ink-secondary">
+                          <MessageBody text={m.text} />
+                        </div>
 
-                    {m.role === 'bot' && m.id !== 'm-1' && (
-                      <div className="mt-2 flex items-center gap-2 border-t border-ink-200/60 pt-2">
-                        <button
-                          onClick={() => setFeedback((f) => ({ ...f, [m.id]: f[m.id] === 'up' ? undefined as any : 'up' }))}
-                          title="Helpful"
-                          className={cn(
-                            'grid h-6 w-6 place-items-center rounded hover:bg-ink-100',
-                            feedback[m.id] === 'up' ? 'text-emerald-600' : 'text-ink-400 hover:text-ink-600',
-                          )}
-                        >
-                          <ThumbsUp className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setFeedback((f) => ({ ...f, [m.id]: f[m.id] === 'down' ? undefined as any : 'down' }))}
-                          title="Not helpful"
-                          className={cn(
-                            'grid h-6 w-6 place-items-center rounded hover:bg-ink-100',
-                            feedback[m.id] === 'down' ? 'text-rose-600' : 'text-ink-400 hover:text-ink-600',
-                          )}
-                        >
-                          <ThumbsDown className="h-3.5 w-3.5" />
-                        </button>
-                        {/* Regenerate only the latest answer */}
-                        {m.id === messages[messages.length - 1].id && (
-                          <button
-                            onClick={regenerate}
-                            disabled={isTyping}
-                            title="Regenerate"
-                            className="grid h-6 w-6 place-items-center rounded text-ink-400 hover:bg-ink-100 hover:text-ink-600 disabled:opacity-40"
-                          >
-                            <RefreshCcw className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-
-                        {/* Download document-length answers as PDF or Word */}
-                        {isDownloadable(m.text) && (
-                          <div className="ml-auto flex items-center gap-1">
-                            <span className="text-[10px] font-medium text-ink-400">Save as</span>
+                        {m.id !== 'm-1' && (
+                          <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-rule pt-2.5">
                             <button
-                              onClick={() => savePdf(m.text)}
-                              title="Download as PDF"
-                              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-ink-500 hover:bg-ink-100 hover:text-rose-600"
+                              type="button"
+                              onClick={() =>
+                                setFeedback((f) => ({ ...f, [m.id]: f[m.id] === 'up' ? undefined : 'up' }))
+                              }
+                              aria-label="Helpful"
+                              aria-pressed={feedback[m.id] === 'up'}
+                              className={cn(
+                                'grid h-7 w-7 place-items-center rounded-sm transition-colors hover:bg-surface-sunken',
+                                feedback[m.id] === 'up' ? 'text-state-positive' : 'text-ink-faint hover:text-ink',
+                              )}
                             >
-                              <FileText className="h-3.5 w-3.5" /> PDF
+                              <ThumbsUp className="h-3.5 w-3.5" />
                             </button>
                             <button
-                              onClick={() => saveWord(m.text)}
-                              title="Download as Word"
-                              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-ink-500 hover:bg-ink-100 hover:text-sky-600"
+                              type="button"
+                              onClick={() =>
+                                setFeedback((f) => ({
+                                  ...f,
+                                  [m.id]: f[m.id] === 'down' ? undefined : 'down',
+                                }))
+                              }
+                              aria-label="Not helpful"
+                              aria-pressed={feedback[m.id] === 'down'}
+                              className={cn(
+                                'grid h-7 w-7 place-items-center rounded-sm transition-colors hover:bg-surface-sunken',
+                                feedback[m.id] === 'down' ? 'text-state-negative' : 'text-ink-faint hover:text-ink',
+                              )}
                             >
-                              <FileType2 className="h-3.5 w-3.5" /> Word
+                              <ThumbsDown className="h-3.5 w-3.5" />
                             </button>
+
+                            {/* Regenerate only the latest answer */}
+                            {m.id === messages[messages.length - 1].id && (
+                              <button
+                                type="button"
+                                onClick={regenerate}
+                                disabled={isTyping}
+                                aria-label="Regenerate answer"
+                                className="grid h-7 w-7 place-items-center rounded-sm text-ink-faint transition-colors hover:bg-surface-sunken hover:text-ink disabled:opacity-40"
+                              >
+                                <RefreshCcw className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+
+                            {/* Download document-length answers as PDF or Word */}
+                            {isDownloadable(m.text) && (
+                              <div className="ml-auto flex items-center gap-1">
+                                <span className="t-overline text-ink-faint">Save as</span>
+                                <button
+                                  type="button"
+                                  onClick={() => savePdf(m.text)}
+                                  className="t-xs flex items-center gap-1 rounded-sm px-1.5 py-1 font-semibold text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+                                >
+                                  <FileText className="h-3.5 w-3.5" /> PDF
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => saveWord(m.text)}
+                                  className="t-xs flex items-center gap-1 rounded-sm px-1.5 py-1 font-semibold text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+                                >
+                                  <FileType2 className="h-3.5 w-3.5" /> Word
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
+                    ) : (
+                      <div className="t-body max-w-[85%] rounded-lg rounded-br-sm bg-ink px-4 py-3 text-canvas">
+                        <MessageBody text={m.text} />
+                      </div>
                     )}
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-
-            {/* Quick replies (only before the first exchange) */}
-            {messages.length === 1 && messages[0].quickReplies && (
-              <div className="flex flex-wrap gap-2 pl-11">
-                {messages[0].quickReplies.map((qr) => (
-                  <button
-                    key={qr}
-                    onClick={() => sendMessage(qr)}
-                    disabled={isTyping}
-                    className="rounded-xl border border-brand-200 bg-brand-50/60 px-3.5 py-2 text-sm font-medium text-brand-700 transition hover:bg-brand-100 disabled:opacity-50"
-                  >
-                    {qr}
-                  </button>
+                  </motion.div>
                 ))}
-              </div>
-            )}
+              </AnimatePresence>
 
-            {/* Typing indicator */}
-            {isTyping && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3">
-                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700">
-                  <Bot className="h-4 w-4 text-white" />
+              {/* Quick replies (only before the first exchange) */}
+              {messages.length === 1 && messages[0].quickReplies && (
+                <div className="flex flex-wrap gap-2 pl-4 sm:pl-5">
+                  {messages[0].quickReplies.map((qr) => (
+                    <button
+                      key={qr}
+                      type="button"
+                      onClick={() => sendMessage(qr)}
+                      disabled={isTyping}
+                      className="rounded-full border border-rule px-3.5 py-1.5 text-[0.8125rem] font-semibold text-ink-secondary transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
+                    >
+                      {qr}
+                    </button>
+                  ))}
                 </div>
-                <div className="flex items-center gap-1 rounded-2xl bg-ink-50 px-4 py-3">
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-ink-400" style={{ animationDelay: '0ms' }} />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-ink-400" style={{ animationDelay: '150ms' }} />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-ink-400" style={{ animationDelay: '300ms' }} />
+              )}
+
+              {/* Typing indicator */}
+              {isTyping && (
+                <div className="border-l-2 border-accent pl-4 sm:pl-5">
+                  <p className="t-overline mb-2 text-ink-muted">Decision bot</p>
+                  <div className="flex items-center gap-1.5" role="status" aria-label="Thinking">
+                    {[0, 1, 2].map((i) => (
+                      <span
+                        key={i}
+                        className="h-1.5 w-1.5 animate-dot-pulse rounded-full bg-accent"
+                        style={{ animationDelay: `${i * 0.15}s` }}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </motion.div>
-            )}
+              )}
 
-            <div ref={bottomRef} />
-          </div>
-
-          {/* Input */}
-          <div className="border-t border-ink-200/70 p-3 sm:p-4">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                sendMessage(input)
-              }}
-              className="flex items-center gap-2"
-            >
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask me anything about your scholarships…"
-                className="h-11 flex-1 rounded-xl border border-ink-200 bg-ink-50 px-4 text-sm text-ink-700 placeholder:text-ink-400 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
-              />
-              <button
-                type="submit"
-                disabled={!input.trim() || isTyping}
-                className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-700 text-white transition hover:bg-brand-800 disabled:opacity-40 disabled:hover:bg-brand-700"
-              >
-                <Send className="h-4.5 w-4.5" />
-              </button>
-            </form>
-            <p className="mt-2 text-center text-[11px] text-ink-400">
-              AI-generated using your ScholarCircle data. Always verify deadlines and eligibility with the provider.
-            </p>
-          </div>
-        </Card>
-      </div>
-
-      {/* Right rail */}
-      <div className="space-y-6">
-        <Card className="p-6">
-          <div className="flex items-center gap-2">
-            <Lightbulb className="h-5 w-5 text-gold-500" />
-            <h2 className="font-display text-lg font-bold text-ink-900">What I can do</h2>
-          </div>
-          <div className="mt-4 space-y-3">
-            {tips.map((tip) => (
-              <button
-                key={tip.title}
-                onClick={() => sendMessage(tip.desc)}
-                disabled={isTyping}
-                className="group flex w-full items-center gap-3 rounded-xl border border-ink-200/70 p-3 text-left transition hover:border-brand-300 hover:bg-brand-50/40 disabled:opacity-50"
-              >
-                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600">
-                  <Sparkles className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-ink-800">{tip.title}</p>
-                  <p className="text-xs text-ink-400">{tip.desc}</p>
-                </div>
-                <ArrowRight className="h-4 w-4 shrink-0 text-ink-300 transition group-hover:translate-x-0.5 group-hover:text-brand-600" />
-              </button>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <h2 className="font-display text-lg font-bold text-ink-900">This conversation</h2>
-          <div className="mt-4 space-y-3">
-            {[
-              { label: 'Messages exchanged', value: String(messages.length) },
-              { label: 'Questions you asked', value: String(messages.filter((m) => m.role === 'user').length) },
-            ].map((s) => (
-              <div key={s.label} className="flex items-center justify-between">
-                <span className="text-sm text-ink-600">{s.label}</span>
-                <span className="text-sm font-semibold text-ink-800">{s.value}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="overflow-hidden">
-          <div className="bg-gradient-to-br from-brand-700 to-brand-900 p-5 text-white">
-            <div className="flex items-center gap-2 text-xs font-semibold text-brand-200">
-              <MessageSquareText className="h-4 w-4" /> Grounded answers
+              <div ref={bottomRef} />
             </div>
-            <p className="mt-2 text-sm leading-snug">
-              Replies are based on <span className="font-semibold text-gold-300">your</span> profile,
-              matches and applications — not generic advice. Always confirm deadlines on the provider&apos;s site.
+
+            {/* Composer */}
+            <div className="shrink-0 border-t border-rule px-3 py-3 sm:px-4">
+              {exportError && (
+                <Alert tone="danger" className="mb-3">
+                  {exportError}
+                </Alert>
+              )}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  sendMessage(input)
+                }}
+                className="flex items-center gap-2"
+              >
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Ask me anything about your scholarships…"
+                  aria-label="Message the decision bot"
+                  className="h-11 min-w-0 flex-1 rounded-md border border-rule bg-surface px-4 text-sm text-ink placeholder:text-ink-faint transition-colors hover:border-rule-strong focus:border-ink focus:outline-none"
+                />
+                <Button
+                  type="submit"
+                  variant="accent"
+                  size="icon"
+                  className="h-11 w-11 shrink-0 rounded-md"
+                  disabled={!input.trim() || isTyping}
+                  aria-label="Send message"
+                >
+                  <Send className="h-4.5 w-4.5" />
+                </Button>
+              </form>
+              <p className="t-xs mt-2.5 text-center text-ink-faint">
+                AI-generated using your ScholarCircle data. Always verify deadlines and eligibility
+                with the provider.
+              </p>
+            </div>
+          </Card>
+        </div>
+
+        {/* Right rail */}
+        <div className="space-y-6">
+          <Card as="section">
+            <div className="border-b border-rule px-5 py-4">
+              <h2 className="t-h3 text-ink">What I can do</h2>
+            </div>
+            <ul className="rule-list">
+              {tips.map((tip) => (
+                <li key={tip.title}>
+                  <button
+                    type="button"
+                    onClick={() => sendMessage(tip.desc)}
+                    disabled={isTyping}
+                    className="group flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-surface-sunken disabled:opacity-50"
+                  >
+                    <Sparkles className="h-4 w-4 shrink-0 text-accent" aria-hidden />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[0.8125rem] font-semibold text-ink">
+                        {tip.title}
+                      </span>
+                      <span className="t-xs mt-0.5 block text-ink-muted">{tip.desc}</span>
+                    </span>
+                    <ArrowRight
+                      className="h-4 w-4 shrink-0 text-ink-faint transition-all group-hover:translate-x-0.5 group-hover:text-ink"
+                      aria-hidden
+                    />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Card>
+
+          <Card as="section" className="px-5 py-4">
+            <h2 className="t-overline text-ink-muted">This conversation</h2>
+            <dl className="rule-list mt-2">
+              <DataRow label="Messages exchanged" value={messages.length} />
+              <DataRow
+                label="Questions you asked"
+                value={messages.filter((m) => m.role === 'user').length}
+              />
+            </dl>
+          </Card>
+
+          <section className="rounded-md bg-band px-5 py-5">
+            <p className="t-overline text-accent">Grounded answers</p>
+            <p className="t-sm mt-2.5 leading-relaxed text-band-muted">
+              Replies are based on <span className="font-semibold text-band-on">your</span> profile,
+              matches and applications — not generic advice. Always confirm deadlines on the
+              provider&apos;s site.
             </p>
-          </div>
-        </Card>
+          </section>
+        </div>
       </div>
     </div>
   )

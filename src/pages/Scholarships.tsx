@@ -62,30 +62,26 @@ export default function Scholarships() {
     [eligible],
   )
 
-  const matchesText = (name: string, prov: string) =>
-    !query ||
-    name.toLowerCase().includes(query.toLowerCase()) ||
-    prov.toLowerCase().includes(query.toLowerCase())
+  const visibleMatches = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return matches
+      .filter((m) => (strongOnly ? m.status === 'Strong match' : m.status !== 'Not eligible'))
+      .filter((m) => provider === 'All' || m.scholarship.providerType === provider)
+      .filter(
+        (m) =>
+          !q ||
+          m.scholarship.name.toLowerCase().includes(q) ||
+          m.scholarship.provider.toLowerCase().includes(q),
+      )
+      .sort((a, b) => b.score - a.score)
+  }, [matches, strongOnly, provider, query])
 
-  const visibleMatches = useMemo(
-    () =>
-      matches
-        .filter((m) => (strongOnly ? m.status === 'Strong match' : m.status !== 'Not eligible'))
-        .filter((m) => provider === 'All' || m.scholarship.providerType === provider)
-        .filter((m) => matchesText(m.scholarship.name, m.scholarship.provider))
-        .sort((a, b) => b.score - a.score),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [matches, strongOnly, provider, query],
-  )
-
-  const visibleAll = useMemo(
-    () =>
-      scholarships
-        .filter((s) => provider === 'All' || s.providerType === provider)
-        .filter((s) => matchesText(s.name, s.provider)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [scholarships, provider, query],
-  )
+  const visibleAll = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return scholarships
+      .filter((s) => provider === 'All' || s.providerType === provider)
+      .filter((s) => !q || s.name.toLowerCase().includes(q) || s.provider.toLowerCase().includes(q))
+  }, [scholarships, provider, query])
 
   if (loading) return <PageListSkeleton label="Loading scholarships" />
 
