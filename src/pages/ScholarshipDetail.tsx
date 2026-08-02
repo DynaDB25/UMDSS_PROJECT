@@ -60,6 +60,7 @@ export default function ScholarshipDetail() {
   const [application, setApplication] = useState<any | null>(null)
   const [marking, setMarking] = useState(false)
   const [zipping, setZipping] = useState(false)
+  const [findingForm, setFindingForm] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -81,6 +82,34 @@ export default function ScholarshipDetail() {
         setDocuments(docs)
         setDocTypes(ref?.documentTypes || [])
         setApplication(apps.find((a) => a.scholarshipId === id) || null)
+
+        // No application link on file yet? Go and find it. This runs after the
+        // page has rendered so the crawl never blocks the student, and the
+        // server caches whatever it finds for everyone who comes next.
+        if (!scholarship.applicationUrl && !scholarship.applicationEmail) {
+          setFindingForm(true)
+          api.scholarships
+            .findForm(id!)
+            .then((found) => {
+              if (cancelled) return
+              if (found.applicationUrl || found.applicationEmail) {
+                setS((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        applicationUrl: found.applicationUrl,
+                        applicationEmail: found.applicationEmail,
+                        applicationMode: found.applicationMode as any,
+                      }
+                    : prev,
+                )
+              }
+            })
+            .catch(() => undefined)
+            .finally(() => {
+              if (!cancelled) setFindingForm(false)
+            })
+        }
       } catch {
         if (!cancelled) setLoadError('We couldn’t load this scholarship. It may have closed or been removed.')
       } finally {
@@ -380,6 +409,22 @@ export default function ScholarshipDetail() {
                 className="h-[720px] w-full border-0"
                 loading="lazy"
               />
+
+              {/* Some funders lock their form behind a Google or Microsoft
+                  sign-in, and those sign-in pages refuse to be framed. Nothing
+                  we can detect from here, so always offer the way out. */}
+              <div className="border-t border-ink-200/70 bg-ink-50 px-5 py-3 text-center text-xs text-ink-500 sm:px-6">
+                Form not loading or asking you to sign in?{' '}
+                <a
+                  href={applyRoute.externalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-brand-600 hover:text-brand-700"
+                >
+                  Open it in a new tab instead
+                </a>
+                , then come back and mark it submitted.
+              </div>
             </Card>
           )}
 
@@ -525,6 +570,13 @@ export default function ScholarshipDetail() {
                         form, then mark it submitted here so we can track it.
                       </p>
                     </div>
+
+                    {findingForm && (
+                      <div className="flex items-center gap-2 rounded-xl bg-ink-50 px-3 py-2.5 text-sm text-ink-600">
+                        <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-ink-300 border-t-brand-600" />
+                        Looking for {s.provider}&apos;s application form…
+                      </div>
+                    )}
 
                     {/* Embedded form lives in the main column, so point at it */}
                     {applyRoute.embedUrl ? (

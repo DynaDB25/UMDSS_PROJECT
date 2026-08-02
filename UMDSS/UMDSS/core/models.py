@@ -150,6 +150,9 @@ class Scholarship(models.Model):
     application_mode = models.CharField(
         max_length=10, choices=APPLICATION_MODES, default='unknown',
     )
+    # When we last crawled the provider's page looking for the form. Lets a
+    # fruitless search back off instead of re-crawling on every page view.
+    application_checked_at = models.DateTimeField(null=True, blank=True)
     slots = models.IntegerField(default=0)
     applicants = models.IntegerField(default=0)
     summary = models.TextField(blank=True)

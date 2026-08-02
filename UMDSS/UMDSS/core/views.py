@@ -108,6 +108,56 @@ class ScholarshipViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.AllowAny]
     lookup_field = 'slug'
 
+    # Don't re-crawl a page that gave us nothing until this has passed.
+    RECHECK_AFTER_DAYS = 7
+
+    @action(detail=True, methods=['post'], url_path='find-form')
+    def find_form(self, request, slug=None):
+        """POST /scholarships/{slug}/find-form/ → locate the application form.
+
+        Called by the app when a scholarship has no known form yet, so students
+        get one without anyone curating links by hand. Cached on the row: a hit
+        is permanent, a miss backs off for a week.
+        """
+        import datetime as _dt
+        from django.utils import timezone
+        from .form_finder import discover_application_form
+
+        s = self.get_object()
+
+        if s.application_url or s.application_email:
+            return Response({
+                'applicationUrl': s.application_url,
+                'applicationEmail': s.application_email,
+                'applicationMode': s.application_mode,
+                'searched': False,
+            })
+
+        if s.application_checked_at and timezone.now() - s.application_checked_at < _dt.timedelta(
+            days=self.RECHECK_AFTER_DAYS
+        ):
+            return Response({
+                'applicationUrl': '', 'applicationEmail': '',
+                'applicationMode': s.application_mode, 'searched': False,
+            })
+
+        found = discover_application_form(s.source_url)
+        s.application_url = (found['url'] or '')[:500]
+        s.application_email = (found['email'] or '')[:254]
+        if found['url'] or found['email']:
+            s.application_mode = found['mode']
+        s.application_checked_at = timezone.now()
+        s.save(update_fields=[
+            'application_url', 'application_email', 'application_mode', 'application_checked_at',
+        ])
+
+        return Response({
+            'applicationUrl': s.application_url,
+            'applicationEmail': s.application_email,
+            'applicationMode': s.application_mode,
+            'searched': True,
+        })
+
 
 # ── Matches ───────────────────────────────────────────
 
@@ -784,11 +834,9 @@ class AdminScholarshipCreateView(APIView):
         valid_types = {c[0] for c in Scholarship.PROVIDER_TYPES}
         valid_scopes = {c[0] for c in Scholarship.LEVEL_SCOPES}
         valid_genders = {c[0] for c in Scholarship.GENDER_SCOPES}
-        valid_modes = {c[0] for c in Scholarship.APPLICATION_MODES}
         provider_type = d.get('provider_type') if d.get('provider_type') in valid_types else 'Foundation'
         level_scope = d.get('level_scope') if d.get('level_scope') in valid_scopes else 'tertiary_any'
         gender_scope = d.get('gender_scope') if d.get('gender_scope') in valid_genders else 'any'
-        application_mode = d.get('application_mode') if d.get('application_mode') in valid_modes else 'unknown'
 
         scholarship = Scholarship.objects.create(
             slug=slug,
@@ -810,9 +858,9 @@ class AdminScholarshipCreateView(APIView):
             origin='seeded',
             level_scope=level_scope,
             gender_scope=gender_scope,
-            application_mode=application_mode,
-            application_url=(d.get('application_url') or '').strip(),
-            application_email=(d.get('application_email') or '').strip(),
+            # No application link is entered by hand. The app discovers the real
+            # form from this page the first time a student opens the listing.
+            source_url=(d.get('source_url') or '').strip()[:500],
         )
         return Response(ScholarshipSerializer(scholarship).data, status=status.HTTP_201_CREATED)
 

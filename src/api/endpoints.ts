@@ -13,6 +13,14 @@ export const api = {
   scholarships: {
     list: () => client.get('/scholarships/') as Promise<Scholarship[]>,
     get: (id: string) => client.get(`/scholarships/${id}/`) as Promise<Scholarship>,
+    // Ask the server to go and find this scholarship's real application form.
+    findForm: (id: string) =>
+      client.post(`/scholarships/${id}/find-form/`, {}) as Promise<{
+        applicationUrl: string
+        applicationEmail: string
+        applicationMode: string
+        searched: boolean
+      }>,
   },
   matches: {
     list: () => client.get('/matches/') as Promise<MatchResult[]>,

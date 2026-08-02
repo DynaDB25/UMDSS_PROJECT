@@ -49,13 +49,6 @@ const genderScopes: [string, string][] = [
   ['male', 'Men only'],
 ]
 
-const applicationModes: [string, string][] = [
-  ['unknown', 'Not stated'],
-  ['online', 'Apply online'],
-  ['email', 'Apply by email'],
-  ['offline', 'In person / by post'],
-]
-
 const emptyForm = {
   name: '',
   provider: '',
@@ -66,9 +59,7 @@ const emptyForm = {
   programmes: '',
   level_scope: 'tertiary_any',
   gender_scope: 'any',
-  application_mode: 'unknown',
-  application_url: '',
-  application_email: '',
+  source_url: '',
   summary: '',
 }
 
@@ -442,20 +433,14 @@ export default function Admin() {
                     ))}
                   </select>
                 </Field>
-                <Field label="How to apply">
-                  <select value={form.application_mode} onChange={(e) => setForm({ ...form, application_mode: e.target.value })} className={inputCls}>
-                    {applicationModes.map(([v, l]) => (
-                      <option key={v} value={v}>{l}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Application form link">
-                  <input value={form.application_url} onChange={(e) => setForm({ ...form, application_url: e.target.value })} className={inputCls} placeholder="https://provider.org/apply" />
-                </Field>
-                <Field label="Application email">
-                  <input value={form.application_email} onChange={(e) => setForm({ ...form, application_email: e.target.value })} className={inputCls} placeholder="scholarships@provider.org" />
+                <Field label="Scholarship page link">
+                  <input value={form.source_url} onChange={(e) => setForm({ ...form, source_url: e.target.value })} className={inputCls} placeholder="https://provider.org/scholarships/..." />
                 </Field>
               </div>
+              <p className="-mt-1 text-xs text-ink-500">
+                No application link needed. The app reads that page and finds the real application
+                form itself the first time a student opens this scholarship.
+              </p>
               <Field label="Summary">
                 <textarea value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} rows={3} className="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100" placeholder="A short description of the award and who should apply." />
               </Field>
