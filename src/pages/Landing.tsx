@@ -166,16 +166,7 @@ export default function Landing() {
     <div className="min-h-dvh bg-canvas">
       <SiteHeader />
 
-      {/* ---------------- Dateline strip ---------------- */}
-      <div className="border-y border-rule">
-        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2.5 sm:px-8">
-          <span className="t-overline text-ink">Unified scholarship management</span>
-          <span className="t-overline hidden text-ink-muted sm:inline">Ghana · 2026 edition</span>
-          <span className="t-overline ml-auto hidden text-ink-muted lg:inline">
-            KNUST Computer Science &amp; Engineering
-          </span>
-        </div>
-      </div>
+     
 
       {/* ---------------- Hero ----------------
           A thesis, not a slogan. Sentence case at a considered scale, with the
