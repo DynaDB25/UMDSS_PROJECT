@@ -1,307 +1,419 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import {
-  Sparkles,
-  FolderLock,
-  BellRing,
-  Bot,
-  ArrowRight,
-  CheckCircle2,
-  ShieldCheck,
-  Smartphone,
-  MapPin,
-  GraduationCap,
-  Clock,
-} from 'lucide-react'
+import { ArrowRight, ArrowUpRight } from 'lucide-react'
 import { Logo } from '../components/Logo'
+import { DeadlineBoard } from '../components/marketing/DeadlineBoard'
+import { useOpenAwards } from '../components/marketing/useOpenAwards'
+import { ButtonLink } from '../components/ui'
+import { daysUntil, formatDeadline } from '../data/mock'
+import { cn } from '../lib/cn'
+import { fadeUp, inView, listItem, stagger } from '../lib/motion'
 
 const modules = [
   {
-    icon: Sparkles,
-    title: 'Scholarship Matching Engine',
-    desc: 'Cross-references your WASSCE results, programme and home region against the published criteria of major Ghanaian funders to surface only what you qualify for.',
-    color: 'from-brand-500 to-brand-700',
+    title: 'Matching engine',
+    lead: 'Only what you qualify for.',
+    desc: 'Your WASSCE aggregate, programme and home region are checked against each funder’s published criteria. Every result shows the rule it passed or failed, so eligibility is never a black box.',
   },
   {
-    icon: FolderLock,
-    title: 'Secure Document Vault',
-    desc: 'Upload your Ghana Card, transcripts and admission letter once. AES-256 encrypted, reused across every application instead of five separate portals.',
-    color: 'from-violet-500 to-violet-700',
+    title: 'Document vault',
+    lead: 'Upload once, reuse everywhere.',
+    desc: 'Ghana Card, transcripts, admission letter. Encrypted with AES-256 at rest and attached automatically to any application that asks for them, instead of five separate portals.',
   },
   {
-    icon: BellRing,
-    title: 'Multi-Channel Notifications',
-    desc: 'SMS-first deadline and interview alerts via the Hubtel gateway, tied to the Ghanaian academic calendar. No more missing a window by four days.',
-    color: 'from-amber-500 to-orange-600',
+    title: 'SMS notifications',
+    lead: 'Built for the districts.',
+    desc: 'Deadline, status and interview alerts through the Hubtel gateway, tied to the Ghanaian academic calendar. Email open rates are a fraction of SMS, and a missed alert costs a year.',
   },
   {
-    icon: Bot,
-    title: 'Decision Support Bot',
-    desc: 'A rule-based assistant that answers eligibility questions in plain language and walks you through district interview preparation, any time of day.',
-    color: 'from-rose-500 to-rose-700',
+    title: 'Decision bot',
+    lead: 'An adviser that knows your file.',
+    desc: 'Grounded in your own profile, matches and applications. It compares awards, drafts your personal statement in your voice, and runs a scored mock interview one question at a time.',
   },
-]
-
-const stats = [
-  { value: '47%', label: 'better deadline compliance with SMS alerts' },
-  { value: '98%', label: 'SMS open rate vs. a fraction for email' },
-  { value: '261', label: 'MMDA district schemes covered' },
-  { value: '16', label: 'regions of Ghana supported' },
 ]
 
 const steps = [
-  { icon: GraduationCap, title: 'Build your profile', desc: 'Enter WASSCE aggregate, programme and home region once.' },
-  { icon: Sparkles, title: 'Get matched instantly', desc: 'See a ranked list of scholarships you actually qualify for.' },
-  { icon: FolderLock, title: 'Apply with one vault', desc: 'Attach stored documents to any application in seconds.' },
-  { icon: BellRing, title: 'Never miss a deadline', desc: 'Get SMS alerts for deadlines, status changes and interviews.' },
+  { n: '01', title: 'Build your profile', desc: 'WASSCE aggregate, programme and home region, entered once.' },
+  { n: '02', title: 'Get ranked matches', desc: 'A ranked list of awards you qualify for, with the reasoning shown.' },
+  { n: '03', title: 'Apply from one vault', desc: 'Stored documents attach to any application in seconds.' },
+  { n: '04', title: 'Never miss a close', desc: 'SMS before every deadline, status change and interview.' },
 ]
+
+const coverage = [
+  ['16', 'regions'],
+  ['261', 'district schemes'],
+  ['98%', 'SMS open rate'],
+] as const
+
+/* ------------------------------------------------------------------ */
+
+function SiteHeader() {
+  const [scrolled, setScrolled] = useState(false)
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  return (
+    <header
+      className={`sticky top-0 z-40 bg-canvas transition-colors duration-[--dur] ${
+        scrolled ? 'border-b border-rule' : 'border-b border-transparent'
+      }`}
+    >
+      <div className="mx-auto flex h-16 max-w-[1400px] items-center justify-between gap-3 px-4 sm:px-8">
+        <Link to="/" aria-label="ScholarCircle home" className="shrink-0">
+          <Logo size="sm" className="sm:hidden" />
+          <Logo className="hidden sm:flex" />
+        </Link>
+
+        <nav className="hidden items-center gap-8 md:flex">
+          {[
+            ['Open awards', '#board'],
+            ['What it does', '#modules'],
+            ['How it works', '#how'],
+          ].map(([label, href]) => (
+            <a
+              key={href}
+              href={href}
+              className="text-sm font-semibold text-ink-muted transition-colors hover:text-ink"
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
+
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <ButtonLink to="/login" variant="ghost" size="sm" className="hidden sm:inline-flex">
+            Sign in
+          </ButtonLink>
+          <ButtonLink to="/register" variant="accent" size="sm">
+            Get started
+          </ButtonLink>
+        </div>
+      </div>
+    </header>
+  )
+}
+
+/**
+ * The three awards closing soonest, read live from the public catalogue. This
+ * sits where a marketing page normally puts a mocked-up screenshot, on the
+ * argument that a real record is more persuasive than a drawing of one.
+ */
+function ClosingSoon() {
+  const { awards, live } = useOpenAwards()
+
+  return (
+    <div className="rounded-md border border-rule bg-surface">
+      <div className="flex items-center justify-between gap-3 border-b border-rule px-4 py-3">
+        <p className="t-overline text-ink-muted">Closing soonest</p>
+        {live && (
+          <span className="t-overline flex items-center gap-1.5 text-ink-faint">
+            <span className="h-1.5 w-1.5 rounded-full bg-state-positive" aria-hidden />
+            Live
+          </span>
+        )}
+      </div>
+
+      <ul className="rule-list">
+        {awards.slice(0, 3).map((s) => {
+          const d = daysUntil(s.deadline)
+          const known = Number.isFinite(d)
+          return (
+            <li key={s.id} className="px-4 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-display text-[0.9375rem] font-bold leading-snug tracking-tight text-ink">
+                    {s.name}
+                  </p>
+                  <p className="t-xs mt-1 truncate text-ink-muted">{s.provider}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p
+                    className={cn(
+                      'tabular font-display text-lg font-extrabold leading-none tracking-tight',
+                      known && d <= 14 ? 'text-accent' : 'text-ink',
+                    )}
+                  >
+                    {known ? d : '--'}
+                  </p>
+                  <p className="t-xs mt-1 text-ink-muted">{known ? 'days' : 'rolling'}</p>
+                </div>
+              </div>
+              <p className="tabular t-xs mt-2 text-ink-faint">
+                Closes {s.deadline ? formatDeadline(s.deadline) : 'when filled'}
+              </p>
+            </li>
+          )
+        })}
+      </ul>
+
+      <p className="t-xs border-t border-rule px-4 py-3 text-ink-muted">
+        Create a profile to see which of these you qualify for, and why.
+      </p>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
 
 export default function Landing() {
   return (
-    <div className="min-h-screen bg-white">
-      {/* Nav */}
-      <header className="sticky top-0 z-30 border-b border-ink-100 bg-white/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
-          <Logo />
-          <nav className="hidden items-center gap-8 text-sm font-medium text-ink-600 md:flex">
-            <a href="#modules" className="hover:text-ink-900">Modules</a>
-            <a href="#how" className="hover:text-ink-900">How it works</a>
-            <a href="#impact" className="hover:text-ink-900">Impact</a>
-          </nav>
-          <div className="flex items-center gap-2">
-            <Link to="/login" className="rounded-xl px-4 py-2 text-sm font-semibold text-ink-700 hover:bg-ink-50">
-              Sign in
-            </Link>
-            <Link
-              to="/register"
-              className="rounded-xl bg-brand-700 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-800"
+    <div className="min-h-dvh bg-canvas">
+      <SiteHeader />
+
+      {/* ---------------- Hero ----------------
+          A thesis, not a slogan. Sentence case at a considered scale, with the
+          supporting column carrying the action and the coverage figures. */}
+      <section className="border-b border-rule">
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-8">
+          <motion.div
+            initial="hidden"
+            animate="show"
+            variants={stagger(0, 0.08)}
+            className="grid gap-y-10 py-12 sm:py-16 lg:grid-cols-12 lg:gap-x-16 lg:py-24"
+          >
+            <div className="lg:col-span-7">
+              <motion.h1
+                variants={fadeUp}
+                className="font-display font-extrabold tracking-[-0.035em] text-ink"
+                style={{ fontSize: 'clamp(2.125rem, 4.6vw, 4rem)', lineHeight: 1.04 }}
+              >
+                Ghana does not have a shortage of scholarship money.
+                <span className="mt-3 block text-accent sm:mt-4">
+                  It has a shortage of access.
+                </span>
+              </motion.h1>
+
+              <motion.p
+                variants={fadeUp}
+                className="t-body-lg mt-8 max-w-prose text-ink-secondary"
+              >
+                ScholarCircle matches you to awards you actually qualify for, keeps your Ghana Card,
+                transcripts and admission letter in one encrypted vault, and sends an SMS before
+                every deadline closes. Every match shows the rule it passed, so eligibility is never
+                a guess.
+              </motion.p>
+
+              <motion.div
+                variants={fadeUp}
+                className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center"
+              >
+                <ButtonLink
+                  to="/register"
+                  variant="accent"
+                  size="lg"
+                  className="justify-center"
+                  iconRight={<ArrowRight className="h-4 w-4" />}
+                >
+                  Find my scholarships
+                </ButtonLink>
+                <ButtonLink to="/login" variant="outline" size="lg" className="justify-center">
+                  Sign in
+                </ButtonLink>
+                <p className="t-sm text-ink-muted sm:ml-2">Free for students.</p>
+              </motion.div>
+            </div>
+
+            {/* Real records, not an invented product screenshot */}
+            <motion.aside
+              variants={fadeUp}
+              className="lg:col-span-5 lg:border-l lg:border-rule lg:pl-16"
             >
-              Get started
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      {/* Hero */}
-      <section className="relative overflow-hidden bg-grid">
-        <div className="absolute -left-40 top-10 h-96 w-96 rounded-full bg-brand-200/40 blur-3xl" />
-        <div className="absolute -right-40 top-40 h-96 w-96 rounded-full bg-amber-200/40 blur-3xl" />
-        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-5 py-16 lg:grid-cols-2 lg:py-24">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <div className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
-              <MapPin className="h-3.5 w-3.5" /> Built for Ghanaian tertiary students
-            </div>
-            <h1 className="mt-5 font-display text-4xl font-extrabold leading-[1.1] tracking-tight text-ink-900 sm:text-5xl lg:text-[3.4rem]">
-              The funding exists.
-              <br />
-              <span className="bg-gradient-to-r from-brand-600 to-brand-800 bg-clip-text text-transparent">
-                We help you reach it.
-              </span>
-            </h1>
-            <p className="mt-5 max-w-lg text-lg leading-relaxed text-ink-600">
-              ScholarCircle is a unified scholarship platform that matches you to awards you
-              qualify for, secures your documents, and sends SMS alerts before deadlines
-              close, so no qualified student misses out again.
-            </p>
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Link
-                to="/register"
-                className="group inline-flex items-center gap-2 rounded-xl bg-brand-700 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-900/20 transition hover:bg-brand-800"
-              >
-                Find my scholarships
-                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-              </Link>
-              <Link
-                to="/app"
-                className="inline-flex items-center gap-2 rounded-xl border border-ink-200 bg-white px-6 py-3.5 text-sm font-semibold text-ink-700 transition hover:bg-ink-50"
-              >
-                View live demo
-              </Link>
-            </div>
-            <div className="mt-8 flex items-center gap-6 text-sm text-ink-500">
-              <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-brand-600" /> No application fees</span>
-              <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-brand-600" /> Works on any phone</span>
-            </div>
-          </motion.div>
-
-          {/* Hero mock card */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, delay: 0.15 }}
-            className="relative"
-          >
-            <div className="animate-float-slow rounded-3xl border border-ink-200/70 bg-white p-5 shadow-2xl shadow-brand-900/10">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-ink-400">Your top match</p>
-                  <p className="font-display text-lg font-bold text-ink-900">MTN Bright Scholarship</p>
-                </div>
-                <div className="grid h-12 w-12 place-items-center rounded-2xl bg-amber-500 font-bold text-white">MB</div>
-              </div>
-              <div className="mt-4 flex items-center gap-3 rounded-xl bg-emerald-50 p-3">
-                <div className="grid h-10 w-10 place-items-center rounded-full bg-emerald-600 text-sm font-bold text-white">96</div>
-                <div>
-                  <p className="text-sm font-semibold text-emerald-800">Strong match</p>
-                  <p className="text-xs text-emerald-600">4 of 4 criteria met</p>
-                </div>
-              </div>
-              <div className="mt-4 space-y-2.5">
-                {['WASSCE aggregate 8 ≤ 10 required', 'Computer Engineering · priority STEM field', 'Open to all 16 regions', 'High financial need qualifies'].map((c) => (
-                  <div key={c} className="flex items-center gap-2 text-sm text-ink-600">
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" /> {c}
-                  </div>
-                ))}
-              </div>
-              <button className="mt-4 w-full rounded-xl bg-brand-700 py-2.5 text-sm font-semibold text-white">
-                Apply with saved documents
-              </button>
-            </div>
-
-            <div className="absolute -bottom-5 -left-5 flex items-center gap-3 rounded-2xl border border-ink-200/70 bg-white p-3 shadow-xl">
-              <div className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-100 text-emerald-700">
-                <Smartphone className="h-4.5 w-4.5" />
-              </div>
-              <div className="pr-2">
-                <p className="text-xs font-semibold text-ink-800">SMS sent</p>
-                <p className="text-[11px] text-ink-400">Interview · Thu 10:00 AM</p>
-              </div>
-            </div>
+              <ClosingSoon />
+            </motion.aside>
           </motion.div>
         </div>
       </section>
 
-      {/* Stats strip */}
-      <section id="impact" className="border-y border-ink-100 bg-ink-900">
-        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-px px-5 py-10 lg:grid-cols-4">
-          {stats.map((s) => (
-            <div key={s.label} className="px-4 text-center">
-              <p className="font-display text-3xl font-extrabold text-gold-400 sm:text-4xl">{s.value}</p>
-              <p className="mt-1 text-sm text-ink-300">{s.label}</p>
+      {/* Coverage, as a thin reference strip rather than a section of its own */}
+      <div className="border-b border-rule bg-surface-sunken">
+        <dl className="mx-auto grid max-w-[1400px] grid-cols-2 divide-rule px-4 sm:grid-cols-4 sm:divide-x sm:px-8">
+          {[...coverage, ['Daily', 'catalogue refresh'] as const].map(([value, label]) => (
+            <div key={label} className="py-5 sm:px-6 sm:first:pl-0 sm:last:pr-0">
+              <dd className="tabular font-display text-2xl font-extrabold tracking-[-0.03em] text-ink">
+                {value}
+              </dd>
+              <dt className="t-xs mt-1 text-ink-muted">{label}</dt>
             </div>
           ))}
-        </div>
-      </section>
+        </dl>
+      </div>
 
-      {/* Modules */}
-      <section id="modules" className="mx-auto max-w-6xl px-5 py-20">
-        <div className="mx-auto max-w-2xl text-center">
-          <p className="text-sm font-semibold uppercase tracking-wider text-brand-600">Four integrated modules</p>
-          <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight text-ink-900 sm:text-4xl">
-            One platform, end to end
-          </h2>
-          <p className="mt-4 text-ink-600">
-            Every step of the scholarship journey, from discovery to interview, handled in a single
-            place designed for Ghana's connectivity realities.
-          </p>
-        </div>
-        <div className="mt-12 grid gap-5 md:grid-cols-2">
-          {modules.map((m, i) => (
-            <motion.div
-              key={m.title}
-              initial={{ opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.4, delay: i * 0.05 }}
-              className="group rounded-2xl border border-ink-200/70 bg-white p-6 transition hover:-translate-y-1 hover:shadow-xl hover:shadow-ink-900/5"
-            >
-              <div className={`grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br ${m.color} text-white shadow-sm`}>
-                <m.icon className="h-6 w-6" />
-              </div>
-              <h3 className="mt-4 font-display text-lg font-bold text-ink-900">{m.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-ink-600">{m.desc}</p>
-            </motion.div>
-          ))}
-        </div>
-      </section>
+      {/* ---------------- Live board ---------------- */}
+      <div id="board" className="scroll-mt-16">
+        <DeadlineBoard />
+      </div>
 
-      {/* How it works */}
-      <section id="how" className="border-y border-ink-100 bg-ink-50">
-        <div className="mx-auto max-w-6xl px-5 py-20">
-          <div className="mx-auto max-w-2xl text-center">
-            <p className="text-sm font-semibold uppercase tracking-wider text-brand-600">How it works</p>
-            <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight text-ink-900 sm:text-4xl">
-              From profile to funding in four steps
-            </h2>
-          </div>
-          <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {steps.map((s, i) => (
-              <div key={s.title} className="relative rounded-2xl border border-ink-200/70 bg-white p-6">
-                <div className="absolute right-5 top-5 font-display text-4xl font-extrabold text-ink-100">
-                  {i + 1}
+      {/* ---------------- Modules ---------------- */}
+      <section id="modules" className="scroll-mt-16 border-b border-rule">
+        <div className="mx-auto max-w-[1400px] px-4 py-16 sm:px-8 sm:py-24">
+          <motion.div {...inView} variants={stagger(0, 0.07)} className="max-w-2xl">
+            <motion.p variants={fadeUp} className="t-overline text-ink-muted">
+              Four integrated modules
+            </motion.p>
+            <motion.h2 variants={fadeUp} className="t-display-md mt-4 text-balance text-ink">
+              One platform, discovery through interview.
+            </motion.h2>
+          </motion.div>
+
+          <motion.div {...inView} variants={stagger(0.1, 0.07)} className="mt-14 grid gap-8 sm:grid-cols-2 lg:grid-cols-2">
+            {modules.map((m, i) => (
+              <motion.div
+                key={m.title}
+                variants={listItem}
+                className="group relative rounded-lg border border-rule bg-surface p-8 transition-colors hover:border-accent"
+              >
+                <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-md bg-surface-sunken transition-colors group-hover:bg-accent group-hover:text-accent-on">
+                  <span className="font-display font-bold">0{i + 1}</span>
                 </div>
-                <div className="grid h-11 w-11 place-items-center rounded-xl bg-brand-50 text-brand-700">
-                  <s.icon className="h-5 w-5" />
-                </div>
-                <h3 className="mt-4 font-semibold text-ink-900">{s.title}</h3>
-                <p className="mt-1.5 text-sm text-ink-600">{s.desc}</p>
-              </div>
+                <h3 className="t-h2 text-ink">{m.title}</h3>
+                <p className="font-display text-lg font-bold tracking-tight text-ink mt-2">
+                  {m.lead}
+                </p>
+                <p className="t-body mt-3 text-ink-muted">{m.desc}</p>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
-      {/* Story / why */}
-      <section className="mx-auto max-w-6xl px-5 py-20">
-        <div className="grid items-center gap-12 lg:grid-cols-2">
-          <div className="rounded-3xl bg-gradient-to-br from-brand-800 to-brand-950 p-8 text-white sm:p-10">
-            <Clock className="h-8 w-8 text-gold-400" />
-            <blockquote className="mt-5 font-display text-2xl font-bold leading-snug">
-              "I qualified for three scholarships. I missed the interview notification by four days
-              and lost a year of funding."
-            </blockquote>
-            <p className="mt-4 text-brand-200">
-              That experience is the reason ScholarCircle exists, so that being capable on paper is enough
-              to be reachable in practice.
-            </p>
-          </div>
-          <div>
-            <h2 className="font-display text-3xl font-extrabold tracking-tight text-ink-900">
-              The problem was never a shortage of funds
-            </h2>
-            <p className="mt-4 text-ink-600">
-              It is a shortage of access. Information sits scattered across disconnected portals.
-              Deadlines pass unannounced. The same documents are reformatted again and again. ScholarCircle
-              acts as an intelligent intermediary layer, aggregating public scholarship data and
-              automating the matching and notification that currently fall short.
-            </p>
-            <ul className="mt-6 space-y-3">
-              {[
-                'Encrypted document vault with full audit trail',
-                'Transparent rule-based eligibility, you always see why',
-                'SMS-first alerts for low-bandwidth districts',
-              ].map((t) => (
-                <li key={t} className="flex items-start gap-3">
-                  <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
-                  <span className="text-ink-700">{t}</span>
-                </li>
-              ))}
-            </ul>
-            <Link
-              to="/register"
-              className="mt-8 inline-flex items-center gap-2 rounded-xl bg-brand-700 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-900/20 transition hover:bg-brand-800"
+      {/* ---------------- Process ---------------- */}
+      <section id="how" className="scroll-mt-16 border-b border-rule bg-surface-sunken">
+        <div className="mx-auto max-w-[1400px] px-4 py-16 sm:px-8 sm:py-24">
+          <motion.div {...inView} variants={stagger(0, 0.07)} className="max-w-2xl">
+            <motion.p variants={fadeUp} className="t-overline text-ink-muted">
+              How it works
+            </motion.p>
+            <motion.h2 variants={fadeUp} className="t-display-md mt-4 text-balance text-ink">
+              From profile to funding in four steps.
+            </motion.h2>
+          </motion.div>
+
+          <motion.ol
+            {...inView}
+            variants={stagger(0.1, 0.07)}
+            className="mt-14 grid gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-4"
+          >
+            {steps.map((s) => (
+              <motion.li key={s.n} variants={listItem} className="group border-t-2 border-rule pt-5 transition-colors hover:border-accent">
+                <span className="tabular t-overline text-accent">{s.n}</span>
+                <h3 className="t-h3 mt-3 text-ink transition-colors group-hover:text-accent">{s.title}</h3>
+                <p className="t-sm mt-2 text-ink-muted">{s.desc}</p>
+              </motion.li>
+            ))}
+          </motion.ol>
+        </div>
+      </section>
+
+      {/* ---------------- Pull quote ---------------- */}
+      <section className="border-b border-rule">
+        <div className="mx-auto max-w-[1400px] px-4 py-16 sm:px-8 sm:py-24">
+          <motion.figure {...inView} variants={stagger(0, 0.08)}>
+            <motion.blockquote
+              variants={fadeUp}
+              className="max-w-5xl font-display font-extrabold tracking-[-0.035em] text-ink"
+              style={{ fontSize: 'clamp(1.5rem, 3.4vw, 2.75rem)', lineHeight: 1.12 }}
             >
-              Create your free profile <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
+              <span className="text-accent">&ldquo;</span>I qualified for three scholarships. I
+              missed the interview notification by four days and lost a year of funding.
+              <span className="text-accent">&rdquo;</span>
+            </motion.blockquote>
+            <motion.figcaption
+              variants={fadeUp}
+              className="mt-8 grid gap-6 border-t border-rule pt-6 lg:grid-cols-12"
+            >
+              <p className="t-overline text-ink-muted lg:col-span-4">The reason this exists</p>
+              <p className="t-body max-w-prose text-ink-secondary lg:col-span-8">
+                Being capable on paper should be enough to be reachable in practice. Information
+                sits scattered across disconnected portals, deadlines pass unannounced, and the same
+                documents get reformatted again and again. ScholarCircle is the layer that closes
+                that gap.
+              </p>
+            </motion.figcaption>
+          </motion.figure>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-ink-100 bg-ink-50">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-5 py-10 sm:flex-row">
-          <Logo />
-          <p className="text-sm text-ink-500">
-            ScholarCircle · A final-year project · KNUST Computer Science & Engineering · 2026
-          </p>
-          <div className="flex gap-5 text-sm text-ink-500">
-            <a href="#modules" className="hover:text-ink-900">Modules</a>
-            <a href="#how" className="hover:text-ink-900">How it works</a>
-            <Link to="/login" className="hover:text-ink-900">Sign in</Link>
+      {/* ---------------- Closing CTA ---------------- */}
+      <section className="bg-band">
+        <div className="mx-auto flex max-w-[1400px] flex-col gap-8 px-4 py-16 sm:px-8 sm:py-20 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="t-overline text-band-muted">Free for students</p>
+            <h2
+              className="mt-4 max-w-2xl text-balance font-display font-extrabold tracking-[-0.035em] text-band-on"
+              style={{ fontSize: 'clamp(1.625rem, 3.4vw, 2.75rem)', lineHeight: 1.08 }}
+            >
+              Find out what you qualify for in under five minutes.
+            </h2>
+          </div>
+          <ButtonLink
+            to="/register"
+            variant="accent"
+            size="lg"
+            className="w-full shrink-0 justify-center sm:w-auto"
+            iconRight={<ArrowUpRight className="h-4 w-4" />}
+          >
+            Create your free profile
+          </ButtonLink>
+        </div>
+      </section>
+
+      {/* ---------------- Footer ---------------- */}
+      <footer className="bg-surface">
+        <div className="mx-auto max-w-[1400px] px-4 py-14 sm:px-8">
+          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="sm:col-span-2">
+              <Logo />
+              <p className="t-sm mt-4 max-w-sm text-ink-muted">
+                A unified scholarship management and decision support system for Ghanaian tertiary
+                students.
+              </p>
+            </div>
+
+            <nav aria-label="Product">
+              <p className="t-overline text-ink">Product</p>
+              <ul className="mt-4 space-y-2.5">
+                {[
+                  ['Open awards', '#board'],
+                  ['What it does', '#modules'],
+                  ['How it works', '#how'],
+                ].map(([label, href]) => (
+                  <li key={href}>
+                    <a href={href} className="t-sm text-ink-muted transition-colors hover:text-ink">
+                      {label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+
+            <nav aria-label="Account">
+              <p className="t-overline text-ink">Account</p>
+              <ul className="mt-4 space-y-2.5">
+                <li>
+                  <Link to="/login" className="t-sm text-ink-muted transition-colors hover:text-ink">
+                    Sign in
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/register" className="t-sm text-ink-muted transition-colors hover:text-ink">
+                    Create an account
+                  </Link>
+                </li>
+              </ul>
+            </nav>
+          </div>
+
+          <div className="mt-12 flex flex-col gap-3 border-t border-rule pt-7 sm:flex-row sm:items-center sm:justify-between">
+            <p className="t-xs text-ink-muted">
+              &copy; 2026 ScholarCircle. All rights reserved.
+            </p>
+            <p className="t-xs text-ink-muted">Built for Ghana&rsquo;s connectivity realities.</p>
           </div>
         </div>
       </footer>

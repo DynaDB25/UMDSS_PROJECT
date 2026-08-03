@@ -1,165 +1,249 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
+import { Compass, Search, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { api } from '../api/endpoints'
-import type { Scholarship } from '../data/types'
+import type { MatchResult, Scholarship } from '../data/types'
+import { daysUntil } from '../data/mock'
+import { formatCedis } from '../lib/format'
+import { ScholarshipRow } from '../components/ScholarshipRow'
+import { PageListSkeleton } from '../components/skeletons'
 import {
-  Book,
-  CalendarClock,
-  Users,
-  ArrowRight,
-  SlidersHorizontal,
-  Search,
-} from 'lucide-react'
-import { Card, Badge, UnverifiedBadge } from '../components/ui'
-import { ScholarshipLogo } from '../components/ScholarshipLogo'
-import { daysUntil, formatDeadline } from '../data/mock'
-import { cn } from '../lib/cn'
+  ButtonLink,
+  EmptyState,
+  FilterChip,
+  Input,
+  SegmentedControl,
+  Stat,
+  StatRow,
+} from '../components/ui'
+import { listItem, stagger } from '../lib/motion'
 
-const filters = ['All', 'Government', 'Corporate', 'International', 'Foundation'] as const
+type Tab = 'foryou' | 'all'
 
+const PROVIDER_FILTERS = ['All', 'Government', 'Corporate', 'International', 'Foundation'] as const
+type ProviderFilter = (typeof PROVIDER_FILTERS)[number]
+
+
+/**
+ * Discovery. Browsing the catalogue and reading your ranked matches used to be
+ * two near-identical screens; they are one here, switched by a segmented
+ * control, so there is a single place to look for an award.
+ */
 export default function Scholarships() {
-  const [filter, setFilter] = useState<(typeof filters)[number]>('All')
+  const [tab, setTab] = useState<Tab>('foryou')
+  const [provider, setProvider] = useState<ProviderFilter>('All')
+  const [strongOnly, setStrongOnly] = useState(false)
   const [query, setQuery] = useState('')
+
   const [scholarships, setScholarships] = useState<Scholarship[]>([])
+  const [matches, setMatches] = useState<MatchResult[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.scholarships.list()
-      .then((s) => {
+    Promise.all([api.scholarships.list().catch(() => []), api.matches.list().catch(() => [])])
+      .then(([s, m]) => {
         setScholarships(s)
+        setMatches(m)
       })
       .finally(() => setLoading(false))
   }, [])
-  
-  if (loading) return <div>Loading scholarships...</div>
 
-  const filtered = scholarships.filter((s) => {
-    const matchesFilter = filter === 'All' || s.providerType === filter
-    const matchesQuery =
-      !query ||
-      s.name.toLowerCase().includes(query.toLowerCase()) ||
-      s.provider.toLowerCase().includes(query.toLowerCase())
-    return matchesFilter && matchesQuery
-  })
+  const eligible = useMemo(() => matches.filter((m) => m.status !== 'Not eligible'), [matches])
+  const potentialFunding = useMemo(
+    () => eligible.reduce((sum, m) => sum + (m.scholarship.amountValue || 0), 0),
+    [eligible],
+  )
+  const closingSoon = useMemo(
+    () =>
+      eligible.filter((m) => {
+        const d = daysUntil(m.scholarship.deadline)
+        return Number.isFinite(d) && d >= 0 && d <= 14
+      }).length,
+    [eligible],
+  )
+
+  const visibleMatches = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    // An award whose deadline has passed is not a top result whatever it
+    // scores, so open ones always sort above closed ones.
+    const open = (deadline: string | null) => {
+      const d = daysUntil(deadline)
+      return !Number.isFinite(d) || d >= 0
+    }
+    return matches
+      .filter((m) => (strongOnly ? m.status === 'Strong match' : m.status !== 'Not eligible'))
+      .filter((m) => provider === 'All' || m.scholarship.providerType === provider)
+      .filter(
+        (m) =>
+          !q ||
+          m.scholarship.name.toLowerCase().includes(q) ||
+          m.scholarship.provider.toLowerCase().includes(q),
+      )
+      .sort((a, b) => {
+        const oa = open(a.scholarship.deadline)
+        const ob = open(b.scholarship.deadline)
+        if (oa !== ob) return oa ? -1 : 1
+        return b.score - a.score
+      })
+  }, [matches, strongOnly, provider, query])
+
+  const visibleAll = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return scholarships
+      .filter((s) => provider === 'All' || s.providerType === provider)
+      .filter((s) => !q || s.name.toLowerCase().includes(q) || s.provider.toLowerCase().includes(q))
+  }, [scholarships, provider, query])
+
+  if (loading) return <PageListSkeleton label="Loading scholarships" />
+
+  const rows = tab === 'foryou' ? visibleMatches : visibleAll
+  const filtersActive = provider !== 'All' || query !== '' || strongOnly
+
+  const clearFilters = () => {
+    setProvider('All')
+    setQuery('')
+    setStrongOnly(false)
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2">
-          <Book className="h-5 w-5 text-brand-600" />
-          <h1 className="font-display text-2xl font-extrabold text-ink-900 dark:text-ink-50">Scholarships</h1>
-        </div>
-        <p className="text-ink-500 dark:text-ink-400">
-          Browse and read about all available scholarships on the platform, even if they aren't a direct match for you.
+    <div className="space-y-8">
+      <header className="border-b border-rule pb-6">
+        <p className="t-overline text-accent">Discovery</p>
+        <h1 className="t-h1 mt-2 text-ink">Scholarships</h1>
+        <p className="t-body mt-2 max-w-prose text-ink-muted">
+          Ranked against your WASSCE aggregate, programme, region and financial need, and every
+          result shows exactly why you do or do not qualify.
         </p>
-      </div>
+      </header>
+
+      <StatRow>
+        <Stat label="Scholarships scanned" value={scholarships.length} icon={<Compass />} />
+        <Stat
+          label="You qualify for"
+          value={eligible.length}
+          tone="accent"
+          detail={`${matches.filter((m) => m.status === 'Strong match').length} strong`}
+          icon={<Sparkles />}
+        />
+        <Stat label="Potential funding" value={formatCedis(potentialFunding)} />
+        <Stat
+          label="Closing in 14 days"
+          value={closingSoon}
+          detail={closingSoon ? 'Act on these first' : 'Nothing urgent'}
+        />
+      </StatRow>
 
       {/* Controls */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2">
-          {filters.map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={cn(
-                'rounded-xl px-3.5 py-2 text-sm font-medium transition',
-                filter === f
-                  ? 'bg-brand-700 text-white shadow-sm'
-                  : 'bg-white text-ink-600 ring-1 ring-inset ring-ink-200 hover:bg-ink-50 dark:bg-ink-900 dark:text-ink-300 dark:ring-ink-800 dark:hover:bg-ink-800',
-              )}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400 dark:text-ink-500" />
-          <input
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <SegmentedControl<Tab>
+            value={tab}
+            onChange={setTab}
+            items={[
+              { value: 'foryou', label: 'For you', count: eligible.length },
+              { value: 'all', label: 'Browse all', count: scholarships.length },
+            ]}
+            className="self-start"
+          />
+          <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search awards…"
-            className="h-10 w-full rounded-xl border border-ink-200 bg-white pl-9 pr-4 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-100 dark:focus:border-brand-500 sm:w-56"
+            placeholder="Search awards or funders…"
+            aria-label="Search scholarships"
+            inputSize="sm"
+            icon={<Search />}
+            className="sm:w-72"
           />
+        </div>
+
+        {/* One scrollable row on a phone. Wrapping five chips plus the toggle
+            pushed the first result 200px down the page. */}
+        <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden">
+          {PROVIDER_FILTERS.map((f) => (
+            <FilterChip
+              key={f}
+              active={provider === f}
+              onClick={() => setProvider(f)}
+              className="shrink-0"
+            >
+              {f}
+            </FilterChip>
+          ))}
+          {tab === 'foryou' && (
+            <>
+              <span className="mx-1 hidden h-5 w-px shrink-0 bg-rule sm:block" aria-hidden />
+              <FilterChip
+                active={strongOnly}
+                onClick={() => setStrongOnly((s) => !s)}
+                className="shrink-0"
+              >
+                Strong only
+              </FilterChip>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Cards */}
-      <div className="grid gap-4">
-        {filtered.map((s, i) => {
-          const d = daysUntil(s.deadline)
-          return (
-            <motion.div
-              key={s.id}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: i * 0.04 }}
+      {/* Results */}
+      {rows.length > 0 ? (
+        <div>
+          <p className="t-sm mb-3 text-ink-muted">
+            Showing <span className="tabular font-semibold text-ink">{rows.length}</span>{' '}
+            {tab === 'foryou' ? 'match' : 'scholarship'}
+            {rows.length === 1 ? '' : 'es'}
+          </p>
+          <motion.div
+            initial="hidden"
+            animate="show"
+            variants={stagger(0, 0.04)}
+            className="rule-list overflow-hidden rounded-md border border-rule bg-surface"
+          >
+            {tab === 'foryou'
+              ? visibleMatches.map((m) => (
+                  <motion.div key={m.scholarship.id} variants={listItem}>
+                    <ScholarshipRow scholarship={m.scholarship} match={m} />
+                  </motion.div>
+                ))
+              : visibleAll.map((s) => (
+                  <motion.div key={s.id} variants={listItem}>
+                    <ScholarshipRow scholarship={s} />
+                  </motion.div>
+                ))}
+          </motion.div>
+        </div>
+      ) : filtersActive ? (
+        <EmptyState
+          icon={<SlidersHorizontal />}
+          title="Nothing matches these filters"
+          description="Try a different provider type, or clear the filters to see everything again."
+          action={
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-sm font-semibold text-ink underline underline-offset-4 hover:text-accent"
             >
-              <Card className="p-5 transition hover:shadow-md hover:shadow-ink-900/5 dark:hover:shadow-black/50">
-                <div className="flex flex-col gap-5 lg:flex-row">
-                  {/* Left: identity */}
-                  <div className="flex flex-1 gap-4">
-                    <ScholarshipLogo scholarshipId={s.id} initials={s.initials} color={s.logoColor} className="h-14 w-14 rounded-2xl" />
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Link
-                          to={`/app/matches/${s.id}`}
-                          className="font-display text-lg font-bold text-ink-900 hover:text-brand-700 dark:text-ink-50 dark:hover:text-brand-400"
-                        >
-                          {s.name}
-                        </Link>
-                        <UnverifiedBadge origin={s.origin} />
-                      </div>
-                      <p className="text-sm text-ink-500 dark:text-ink-400">{s.provider}</p>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {s.tags.map((t) => (
-                          <Badge key={t} tone="ink">{t}</Badge>
-                        ))}
-                      </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-ink-500 dark:text-ink-400">
-                        <span className="font-semibold text-emerald-700 dark:text-emerald-500">{s.amount}</span>
-                        <span className="inline-flex items-center gap-1.5">
-                          <CalendarClock className="h-4 w-4" /> {formatDeadline(s.deadline)}
-                          {Number.isFinite(d) && (
-                            <span className={cn('font-semibold', d <= 7 ? 'text-rose-600 dark:text-rose-500' : 'text-ink-500 dark:text-ink-400')}>
-                              ({d} days)
-                            </span>
-                          )}
-                        </span>
-                        <span className="inline-flex items-center gap-1.5">
-                          <Users className="h-4 w-4" /> {s.slots} slots
-                        </span>
-                      </div>
-                      <p className="mt-4 text-sm text-ink-600 dark:text-ink-300">
-                        {s.summary}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Right: cta */}
-                  <div className="flex items-center justify-between gap-4 lg:flex-col lg:items-end lg:justify-center">
-                    <Link
-                      to={`/app/matches/${s.id}`}
-                      className="group inline-flex items-center gap-2 rounded-xl bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800"
-                    >
-                      View details
-                      <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-                    </Link>
-                  </div>
-                </div>
-              </Card>
-            </motion.div>
-          )
-        })}
-
-        {filtered.length === 0 && (
-          <Card className="p-12 text-center">
-            <SlidersHorizontal className="mx-auto h-10 w-10 text-ink-300 dark:text-ink-600" />
-            <p className="mt-3 font-semibold text-ink-700 dark:text-ink-300">No scholarships found</p>
-            <p className="text-sm text-ink-500 dark:text-ink-500">Try a different filter or clear your search.</p>
-          </Card>
-        )}
-      </div>
+              Clear all filters
+            </button>
+          }
+        />
+      ) : tab === 'foryou' ? (
+        <EmptyState
+          icon={<Sparkles />}
+          title="No matches yet"
+          description="The matching engine needs your WASSCE aggregate, programme and home region before it can rank awards for you."
+          action={
+            <ButtonLink to="/app/settings" variant="accent">
+              Complete my profile
+            </ButtonLink>
+          }
+        />
+      ) : (
+        <EmptyState
+          icon={<Compass />}
+          title="No scholarships listed yet"
+          description="The daily scrape has not returned any awards. Check back shortly."
+        />
+      )}
     </div>
   )
 }

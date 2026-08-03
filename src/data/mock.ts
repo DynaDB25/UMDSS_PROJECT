@@ -32,7 +32,7 @@ export const GHANA_REGIONS = [
 // Catalogue of programmes offered across Ghanaian universities (UG, KNUST,
 // UCC, UEW, UMaT, UDS, GIMPA, Ashesi, …), grouped by discipline for the
 // programme pickers. Students whose programme still isn't here use the
-// free-text "Other" option — the catalogue helps, it never blocks.
+// free-text "Other" option, the catalogue helps, it never blocks.
 export const PROGRAMME_GROUPS: { group: string; items: string[] }[] = [
   {
     group: 'Engineering & Technology',
@@ -412,7 +412,7 @@ export const applications: Application[] = [
     initials: 'MC',
     logoColor: 'bg-orange-600',
     status: 'Draft',
-    submittedOn: '—',
+    submittedOn: '-',
     lastUpdate: '2026-06-27',
     progress: 10,
     amount: 'Comprehensive',
@@ -429,8 +429,8 @@ export const documents: VaultDocument[] = [
   { id: 'doc-2', name: 'WASSCE Results Slip', type: 'PDF', category: 'Academic', size: '840 KB', uploadedOn: '02 Jun 2026', status: 'Verified', linkedApplications: 4, encrypted: true },
   { id: 'doc-3', name: 'KNUST Admission Letter', type: 'PDF', category: 'Admission', size: '510 KB', uploadedOn: '05 Jun 2026', status: 'Verified', linkedApplications: 3, encrypted: true },
   { id: 'doc-4', name: 'Financial Need Statement', type: 'PDF', category: 'Financial', size: '320 KB', uploadedOn: '11 Jun 2026', status: 'Pending', linkedApplications: 2, encrypted: true },
-  { id: 'doc-5', name: 'Recommendation Letter — Mr. Owusu', type: 'PDF', category: 'Other', size: '290 KB', uploadedOn: '14 Jun 2026', status: 'Verified', linkedApplications: 1, encrypted: true },
-  { id: 'doc-6', name: 'Proof of District of Origin', type: 'JPG', category: 'Identity', size: '1.8 MB', uploadedOn: '—', status: 'Action needed', linkedApplications: 0, encrypted: true },
+  { id: 'doc-5', name: 'Recommendation Letter, Mr. Owusu', type: 'PDF', category: 'Other', size: '290 KB', uploadedOn: '14 Jun 2026', status: 'Verified', linkedApplications: 1, encrypted: true },
+  { id: 'doc-6', name: 'Proof of District of Origin', type: 'JPG', category: 'Identity', size: '1.8 MB', uploadedOn: '-', status: 'Action needed', linkedApplications: 0, encrypted: true },
 ]
 
 export const notifications: AppNotification[] = [

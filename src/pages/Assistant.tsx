@@ -1,277 +1,736 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Bot,
   Send,
   Sparkles,
-  Lightbulb,
   RefreshCcw,
   ThumbsUp,
   ThumbsDown,
   ArrowRight,
-  MessageSquareText,
+  FileText,
+  FileType2,
+  Mic,
+  Square,
+  X,
 } from 'lucide-react'
-import { Card, Badge } from '../components/ui'
+import { Alert, Badge, Button, Card, DataRow, Modal, Progress } from '../components/ui'
+import { useAuth } from '../contexts/AuthContext'
+import { api, type ChatTurn } from '../api/endpoints'
+import type { MatchResult } from '../data/types'
+import { downloadPdf, downloadDocx, deriveTitle } from '../lib/exportDoc'
 import { cn } from '../lib/cn'
 import type { ChatMessage } from '../data/types'
 
-const initialMessages: ChatMessage[] = [
-  {
-    id: 'm-1',
-    role: 'bot',
-    text: "Hello Benjamin 👋  I'm your Scholarship Decision Bot. I can help you compare awards, draft essays, prepare for interviews, or answer eligibility questions. What would you like help with today?",
-    quickReplies: [
-      'Compare MTN vs GETFund',
-      'Help me write an essay',
-      'Prepare for my MTN interview',
-      'Which scholarships can I still apply for?',
-    ],
-  },
-]
+// Offer downloads on substantial answers (essays, letters, interview guides),
+// not on short chatty replies.
+const isDownloadable = (text: string) => text.trim().length > 240
 
-const botResponses: Record<string, string> = {
-  'Compare MTN vs GETFund':
-    "Great question! Here's a quick comparison:\n\n**MTN Bright Scholarship**\n• Amount: GH₵ 10,000/year + laptop + internship\n• Match score: 96% — your strongest match\n• Deadline: 14 Jul 2026\n• Extras: Paid MTN internship, mentorship, data bundle\n\n**GETFund National Scholarship**\n• Amount: Full tuition + GH₵ 6,000 stipend\n• Match score: 92% — also very strong\n• Deadline: 31 Jul 2026\n• Extras: Book allowance, renewable yearly\n\n**My recommendation:** Apply for both! MTN gives career-specific perks (internship + laptop) while GETFund covers more of your tuition. They are not mutually exclusive.",
-  'Help me write an essay':
-    "I'd love to help you draft an essay! For the Mastercard Foundation Scholars application, you'll need a personal essay (500-700 words). Let's start with an outline:\n\n1. **Opening hook** — A defining moment that shaped your goals\n2. **Your story** — Background, challenges you've overcome, why computer engineering\n3. **Impact vision** — How the scholarship enables you to give back to Ghana\n4. **Closing** — A forward-looking statement connecting your ambition to the foundation's mission\n\nWould you like me to draft a full essay based on your profile, or would you prefer to write section by section?",
-  'Prepare for my MTN interview':
-    "Your MTN Bright Scholarship interview is on **Thu 03 Jul, 10:00 AM at MTN House, Accra**. Here's how to prepare:\n\n**Likely questions:**\n1. Why did you choose Computer Engineering?\n2. How will this scholarship impact your community?\n3. Describe a technical project you've worked on\n4. Where do you see yourself in 5 years?\n\n**Tips:**\n• Research MTN's current CSR initiatives in Ghana\n• Prepare a 60-second elevator pitch about yourself\n• Dress formally — business formal is expected\n• Bring printed copies of your documents\n• Arrive 30 minutes early\n\nWant me to do a mock interview with you?",
-  'Which scholarships can I still apply for?':
-    "Based on your profile and current deadlines, here are the scholarships still open:\n\n1. **District-Level Scheme** — closes **05 Jul** (6 days!) ⚠️\n   → You've submitted but need to upload Proof of District Origin\n\n2. **MTN Bright** — closes **14 Jul** (15 days)\n   → Application in interview stage ✅\n\n3. **GETFund National** — closes **31 Jul** (32 days)\n   → Under review ✅\n\n4. **Mastercard Foundation** — closes **20 Aug** (52 days)\n   → Draft started — finish your personal essay\n\n5. **Stanbic Future Leaders** — closes **10 Sep** (73 days)\n   → Not yet applied; you're a partial match (71%)\n\n6. **Chevening-Ghana** — closes **01 Oct** (94 days)\n   → Not yet applied; strong match (88%) but needs leadership essay\n\n**Priority action:** Upload your district origin proof ASAP — that deadline is in 6 days!",
-}
+const INTERVIEW_QUESTIONS = 6
+
+/**
+ * Message ids must be unique.
+ *
+ * These were derived from Date.now() alone, and starting an interview creates
+ * the user turn and the bot placeholder in the same millisecond. The ids
+ * collided, so every streamed chunk was appended to the student's own message
+ * instead of the panel's reply.
+ */
+let messageSeq = 0
+const nextId = () => `m-${Date.now()}-${++messageSeq}`
+
+const greetingMessage = (name: string): ChatMessage => ({
+  id: 'm-1',
+  role: 'bot',
+  text: `Hi ${name}. I know your profile, your matches and where each application stands, so ask me anything specific and I can actually answer it.\n\nI can compare two awards, tell you what is blocking a match, draft a personal statement in your voice, or sit you down for a real mock interview.`,
+  quickReplies: [
+    'Which scholarships should I prioritise?',
+    'Write my personal statement',
+    'Plan my upcoming deadlines',
+  ],
+})
 
 const tips = [
-  { title: 'Interview prep', desc: 'Ask me to run a mock interview for any scholarship' },
-  { title: 'Essay drafts', desc: 'I can generate first-draft essays from your profile' },
-  { title: 'Deadline planning', desc: 'Get a week-by-week action plan for all open deadlines' },
-  { title: 'Compare awards', desc: 'Side-by-side comparison of any two scholarships' },
+  { title: 'Interview prep', desc: 'What should I expect from a scholarship panel?' },
+  { title: 'Essay drafts', desc: 'Draft a personal statement outline from my profile' },
+  { title: 'Deadline planning', desc: 'Give me a week by week plan for my open deadlines' },
+  { title: 'Compare awards', desc: 'Compare my top two scholarship matches' },
 ]
 
+/* ------------------------------------------------------------------ *
+ * Interview parsing, the protocol asks the model for stable markers,
+ * so the UI can show progress and a score without a second round trip.
+ * ------------------------------------------------------------------ */
+
+const SCORE_RE = /\*\*Score:\s*(\d{1,2})\s*\/\s*10\*\*/i
+const QUESTION_RE = /\*\*Question\s+(\d)\s+of\s+\d\*\*/i
+const DEBRIEF_RE = /\*\*Debrief\*\*/i
+
+function readScore(text: string): number | null {
+  const m = text.match(SCORE_RE)
+  return m ? Math.min(10, Number(m[1])) : null
+}
+
+function readQuestionNumber(text: string): number | null {
+  const m = text.match(QUESTION_RE)
+  return m ? Number(m[1]) : null
+}
+
+/** Strip the markers the header already renders, so they don't appear twice. */
+function stripMarkers(text: string) {
+  return text.replace(SCORE_RE, '').replace(/^\s*\n/, '')
+}
+
+// Render a single line with inline **bold** without pulling in a markdown lib.
+function renderInline(text: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    /^\*\*[^*]+\*\*$/.test(part) ? (
+      <strong key={i} className="font-bold text-ink">
+        {part.slice(2, -2)}
+      </strong>
+    ) : (
+      <span key={i}>{part}</span>
+    ),
+  )
+}
+
+type Block =
+  | { kind: 'para'; text: string }
+  | { kind: 'bullet'; text: string }
+  | { kind: 'heading'; text: string }
+  | { kind: 'space' }
+
+/**
+ * Group raw model output into blocks.
+ *
+ * Models often hard-wrap prose at ~80 columns. Treating each source line as its
+ * own paragraph put a gap after every wrapped line, so consecutive prose lines
+ * are joined back into one paragraph and only a blank line starts a new one.
+ */
+function toBlocks(text: string): Block[] {
+  const blocks: Block[] = []
+  let para: string[] = []
+
+  const flush = () => {
+    if (para.length) {
+      blocks.push({ kind: 'para', text: para.join(' ') })
+      para = []
+    }
+  }
+
+  for (const line of text.split('\n')) {
+    if (line.trim() === '') {
+      flush()
+      // Collapse runs of blank lines into a single gap.
+      if (blocks.length && blocks[blocks.length - 1].kind !== 'space') {
+        blocks.push({ kind: 'space' })
+      }
+      continue
+    }
+    const heading = line.match(/^#{1,6}\s+(.*)$/)
+    if (heading) {
+      flush()
+      blocks.push({ kind: 'heading', text: heading[1] })
+      continue
+    }
+    const bullet = line.match(/^\s*(?:[-*•]|\d+\.)\s+(.*)$/)
+    if (bullet) {
+      flush()
+      blocks.push({ kind: 'bullet', text: bullet[1] })
+      continue
+    }
+    para.push(line.trim())
+  }
+  flush()
+
+  // A trailing gap adds nothing but whitespace under the message.
+  while (blocks.length && blocks[blocks.length - 1].kind === 'space') blocks.pop()
+  return blocks
+}
+
+// Lightweight formatter for LLM output: headings, bullets, blank-line spacing.
+function MessageBody({ text }: { text: string }) {
+  return (
+    <div className="space-y-1">
+      {toBlocks(text).map((b, i) => {
+        if (b.kind === 'space') return <div key={i} className="h-2.5" />
+        if (b.kind === 'heading')
+          return (
+            <p key={i} className="font-display font-bold tracking-tight text-ink">
+              {renderInline(b.text)}
+            </p>
+          )
+        if (b.kind === 'bullet')
+          return (
+            <div key={i} className="flex gap-2.5">
+              <span className="mt-[7px] h-1 w-1 shrink-0 rotate-45 bg-current opacity-45" aria-hidden />
+              <span className="min-w-0 flex-1">{renderInline(b.text)}</span>
+            </div>
+          )
+        return <p key={i}>{renderInline(b.text)}</p>
+      })}
+    </div>
+  )
+}
+
+/** Caret that trails the text while a reply is still being written. */
+function StreamCaret() {
+  return (
+    <span
+      className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[2px] animate-pulse bg-accent align-baseline"
+      aria-hidden
+    />
+  )
+}
+
 export default function Assistant() {
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
+  const { user } = useAuth()
+  const firstName = user?.first_name || 'there'
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [greetingMessage(firstName)])
   const [input, setInput] = useState('')
-  const [isTyping, setIsTyping] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [streamingId, setStreamingId] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<Record<string, 'up' | 'down' | undefined>>({})
+  const [exportError, setExportError] = useState('')
+
+  // Interview session
+  const [interview, setInterview] = useState<{ active: boolean; target: string } | null>(null)
+  const [showPicker, setShowPicker] = useState(false)
+  const [matches, setMatches] = useState<MatchResult[]>([])
+
   const bottomRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isTyping])
+  }, [messages, isStreaming])
+
+  useEffect(() => {
+    api.matches
+      .list()
+      .then((m) => setMatches(m.filter((x) => x.status !== 'Not eligible')))
+      .catch(() => setMatches([]))
+  }, [])
+
+  // The auth user loads asynchronously; once we know their name, personalise the
+  // opening greeting, but only while the conversation is still untouched so we
+  // never clobber an in-progress chat.
+  useEffect(() => {
+    setMessages((prev) =>
+      prev.length === 1 && prev[0].id === 'm-1' ? [greetingMessage(firstName)] : prev,
+    )
+  }, [firstName])
+
+  // Stop generating on unmount so an abandoned stream doesn't keep writing.
+  useEffect(() => () => abortRef.current?.abort(), [])
+
+  /**
+   * Stream a reply for a conversation that ends on a user turn. Text is
+   * appended to a placeholder bot message as each chunk lands.
+   */
+  const requestReply = useCallback(
+    async (convo: ChatMessage[], opts?: { mode?: 'interview'; target?: string }) => {
+      const botId = nextId()
+      const controller = new AbortController()
+      abortRef.current = controller
+
+      setIsStreaming(true)
+      setStreamingId(botId)
+      setMessages([...convo, { id: botId, role: 'bot', text: '' }])
+
+      const payload: ChatTurn[] = convo
+        .filter((m) => m.text?.trim())
+        .map((m) => ({
+          role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: m.text,
+        }))
+
+      const activeInterview = opts?.mode === 'interview' || interview?.active
+      const target = opts?.target ?? interview?.target
+
+      try {
+        await api.assistant.stream(
+          payload,
+          (delta) => {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === botId ? { ...m, text: m.text + delta } : m)),
+            )
+          },
+          {
+            mode: activeInterview ? 'interview' : 'chat',
+            scholarship: activeInterview ? target : undefined,
+            signal: controller.signal,
+          },
+        )
+      } catch (err: any) {
+        // An aborted stream is the student pressing stop, not a failure.
+        if (err?.name === 'AbortError') {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === botId && !m.text.trim()
+                ? { ...m, text: 'Stopped. Ask me something else whenever you are ready.' }
+                : m,
+            ),
+          )
+        } else {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === botId
+                ? {
+                    ...m,
+                    text:
+                      m.text ||
+                      err?.message ||
+                      "Sorry, I couldn't reach the assistant just now. Please try again.",
+                  }
+                : m,
+            ),
+          )
+        }
+      } finally {
+        setIsStreaming(false)
+        setStreamingId(null)
+        abortRef.current = null
+      }
+    },
+    [interview],
+  )
 
   const sendMessage = (text: string) => {
-    if (!text.trim()) return
-
-    const userMsg: ChatMessage = { id: `m-${Date.now()}`, role: 'user', text: text.trim() }
-    setMessages((prev) => [...prev, userMsg])
+    if (!text.trim() || isStreaming) return
+    const userMsg: ChatMessage = { id: nextId(), role: 'user', text: text.trim() }
+    const next = [...messages, userMsg]
+    setMessages(next)
     setInput('')
-    setIsTyping(true)
-
-    setTimeout(() => {
-      const reply =
-        botResponses[text.trim()] ??
-        "I've looked at your profile and the current scholarship database. Could you give me a bit more detail about what you'd like help with? For example:\n\n• Compare two specific scholarships\n• Draft or review an essay\n• Prepare for an interview\n• Check your eligibility for a specific award"
-
-      const botMsg: ChatMessage = {
-        id: `m-${Date.now() + 1}`,
-        role: 'bot',
-        text: reply,
-      }
-      setIsTyping(false)
-      setMessages((prev) => [...prev, botMsg])
-    }, 1200 + Math.random() * 800)
+    requestReply(next)
   }
 
+  const stopGenerating = () => abortRef.current?.abort()
+
+  const startInterview = (target: string) => {
+    setShowPicker(false)
+    setInterview({ active: true, target })
+    const opener: ChatMessage = {
+      id: nextId(),
+      role: 'user',
+      text: `Start the mock interview for ${target}. I am ready.`,
+    }
+    const next = [...messages, opener]
+    setMessages(next)
+    requestReply(next, { mode: 'interview', target })
+  }
+
+  const endInterview = () => {
+    abortRef.current?.abort()
+    setInterview(null)
+  }
+
+  const savePdf = (text: string) => {
+    setExportError('')
+    try {
+      downloadPdf(deriveTitle(text), text)
+    } catch (e) {
+      console.error(e)
+      setExportError('Sorry, I could not create the PDF. Please try again.')
+    }
+  }
+
+  const saveWord = async (text: string) => {
+    setExportError('')
+    try {
+      await downloadDocx(deriveTitle(text), text)
+    } catch (e) {
+      console.error(e)
+      setExportError('Sorry, I could not create the Word file. Please try again.')
+    }
+  }
+
+  // Re-ask from the last user message (drops the previous bot answer).
+  const regenerate = () => {
+    if (isStreaming) return
+    const lastUserIdx = messages.map((m) => m.role).lastIndexOf('user')
+    if (lastUserIdx === -1) return
+    requestReply(messages.slice(0, lastUserIdx + 1))
+  }
+
+  // Interview progress, read from the markers the model emits.
+  const botText = messages.filter((m) => m.role === 'bot').map((m) => m.text)
+  const currentQuestion = botText.reduce<number>(
+    (acc, t) => readQuestionNumber(t) ?? acc,
+    interview ? 1 : 0,
+  )
+  const debriefed = botText.some((t) => DEBRIEF_RE.test(t))
+  const scores = botText.map(readScore).filter((s): s is number => s !== null)
+  const avgScore = scores.length
+    ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
+    : null
+
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <div className="space-y-4 lg:col-span-2">
-        {/* Header */}
-        <div className="flex items-center gap-2">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700">
-            <Bot className="h-5 w-5 text-white" />
+    <div className="space-y-6">
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-rule pb-5">
+        <div className="flex min-w-0 items-center gap-3.5">
+          <span
+            className={cn(
+              'grid h-11 w-11 shrink-0 place-items-center rounded-sm',
+              interview ? 'bg-accent text-accent-on' : 'bg-ink text-canvas',
+            )}
+            aria-hidden
+          >
+            {interview ? <Mic className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
+          </span>
+          <div className="min-w-0">
+            <h1 className="t-h2 text-ink">{interview ? 'Mock interview' : 'Decision bot'}</h1>
+            <p className="t-sm mt-0.5 truncate text-ink-muted">
+              {interview ? interview.target : 'Grounded in your profile, matches and applications'}
+            </p>
           </div>
-          <div>
-            <h1 className="font-display text-2xl font-extrabold text-ink-900">Decision Bot</h1>
-            <p className="text-sm text-ink-500">AI-powered scholarship advisor</p>
-          </div>
-          <Badge tone="green" className="ml-2">Online</Badge>
         </div>
 
-        {/* Chat area */}
-        <Card className="flex flex-col" style={{ height: 'calc(100vh - 260px)', minHeight: 420 }}>
-          <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
-            <AnimatePresence initial={false}>
-              {messages.map((m) => (
-                <motion.div
-                  key={m.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className={cn('flex gap-3', m.role === 'user' && 'flex-row-reverse')}
-                >
-                  {m.role === 'bot' && (
-                    <div className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700">
-                      <Bot className="h-4 w-4 text-white" />
-                    </div>
-                  )}
-                  <div
-                    className={cn(
-                      'max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed',
-                      m.role === 'bot'
-                        ? 'bg-ink-50 text-ink-800'
-                        : 'bg-brand-700 text-white',
-                    )}
-                  >
-                    {m.text.split('\n').map((line, i) => (
-                      <span key={i}>
-                        {line.startsWith('**') ? (
-                          <strong>{line.replace(/\*\*/g, '')}</strong>
-                        ) : (
-                          line
-                        )}
-                        {i < m.text.split('\n').length - 1 && <br />}
-                      </span>
-                    ))}
-
-                    {m.role === 'bot' && (
-                      <div className="mt-2 flex items-center gap-2 border-t border-ink-200/60 pt-2">
-                        <button className="grid h-6 w-6 place-items-center rounded text-ink-400 hover:bg-ink-100 hover:text-ink-600">
-                          <ThumbsUp className="h-3.5 w-3.5" />
-                        </button>
-                        <button className="grid h-6 w-6 place-items-center rounded text-ink-400 hover:bg-ink-100 hover:text-ink-600">
-                          <ThumbsDown className="h-3.5 w-3.5" />
-                        </button>
-                        <button className="grid h-6 w-6 place-items-center rounded text-ink-400 hover:bg-ink-100 hover:text-ink-600">
-                          <RefreshCcw className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-
-            {/* Quick replies */}
-            {messages.length === 1 && messages[0].quickReplies && (
-              <div className="flex flex-wrap gap-2 pl-11">
-                {messages[0].quickReplies.map((qr) => (
-                  <button
-                    key={qr}
-                    onClick={() => sendMessage(qr)}
-                    className="rounded-xl border border-brand-200 bg-brand-50/60 px-3.5 py-2 text-sm font-medium text-brand-700 transition hover:bg-brand-100"
-                  >
-                    {qr}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Typing indicator */}
-            {isTyping && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="flex items-center gap-3 pl-0"
-              >
-                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700">
-                  <Bot className="h-4 w-4 text-white" />
-                </div>
-                <div className="flex items-center gap-1 rounded-2xl bg-ink-50 px-4 py-3">
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-ink-400" style={{ animationDelay: '0ms' }} />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-ink-400" style={{ animationDelay: '150ms' }} />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-ink-400" style={{ animationDelay: '300ms' }} />
-                </div>
-              </motion.div>
-            )}
-
-            <div ref={bottomRef} />
-          </div>
-
-          {/* Input */}
-          <div className="border-t border-ink-200/70 p-3 sm:p-4">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                sendMessage(input)
-              }}
-              className="flex items-center gap-2"
-            >
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask me anything about scholarships…"
-                className="h-11 flex-1 rounded-xl border border-ink-200 bg-ink-50 px-4 text-sm text-ink-700 placeholder:text-ink-400 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
-              />
-              <button
-                type="submit"
-                disabled={!input.trim()}
-                className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-700 text-white transition hover:bg-brand-800 disabled:opacity-40 disabled:hover:bg-brand-700"
-              >
-                <Send className="h-4.5 w-4.5" />
-              </button>
-            </form>
-            <p className="mt-2 text-center text-[11px] text-ink-400">
-              Responses are AI-generated. Always verify deadline dates and eligibility details.
-            </p>
-          </div>
-        </Card>
-      </div>
-
-      {/* Right rail */}
-      <div className="space-y-6">
-        <Card className="p-6">
+        {interview ? (
           <div className="flex items-center gap-2">
-            <Lightbulb className="h-5 w-5 text-gold-500" />
-            <h2 className="font-display text-lg font-bold text-ink-900">What I can do</h2>
+            {avgScore !== null && <Badge tone="accent">Avg {avgScore}/10</Badge>}
+            <Button variant="subtle" size="sm" onClick={endInterview} icon={<X className="h-3.5 w-3.5" />}>
+              End interview
+            </Button>
           </div>
-          <div className="mt-4 space-y-3">
-            {tips.map((tip) => (
-              <button
-                key={tip.title}
-                onClick={() => sendMessage(tip.title === 'Compare awards' ? 'Compare MTN vs GETFund' : tip.desc)}
-                className="group flex w-full items-center gap-3 rounded-xl border border-ink-200/70 p-3 text-left transition hover:border-brand-300 hover:bg-brand-50/40"
-              >
-                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600">
-                  <Sparkles className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-ink-800">{tip.title}</p>
-                  <p className="text-xs text-ink-400">{tip.desc}</p>
-                </div>
-                <ArrowRight className="h-4 w-4 shrink-0 text-ink-300 transition group-hover:translate-x-0.5 group-hover:text-brand-600" />
-              </button>
-            ))}
-          </div>
-        </Card>
+        ) : (
+          <Button
+            variant="accent"
+            size="sm"
+            onClick={() => setShowPicker(true)}
+            icon={<Mic className="h-4 w-4" />}
+          >
+            Start mock interview
+          </Button>
+        )}
+      </header>
 
-        <Card className="p-6">
-          <h2 className="font-display text-lg font-bold text-ink-900">Conversation stats</h2>
-          <div className="mt-4 space-y-3">
-            {[
-              { label: 'Messages today', value: String(messages.length) },
-              { label: 'Scholarships discussed', value: '4' },
-              { label: 'Essays drafted', value: '0' },
-              { label: 'Mock interviews', value: '0' },
-            ].map((s) => (
-              <div key={s.label} className="flex items-center justify-between">
-                <span className="text-sm text-ink-600">{s.label}</span>
-                <span className="text-sm font-semibold text-ink-800">{s.value}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="overflow-hidden">
-          <div className="bg-gradient-to-br from-brand-700 to-brand-900 p-5 text-white">
-            <div className="flex items-center gap-2 text-xs font-semibold text-brand-200">
-              <MessageSquareText className="h-4 w-4" /> SMS Mode
-            </div>
-            <p className="mt-2 text-sm leading-snug">
-              Can't access the web app? Text <span className="font-bold text-gold-300">SCHOLAR</span> to{' '}
-              <span className="font-semibold">1393</span> to chat with the bot via SMS.
+      {/* Live interview progress */}
+      {interview && (
+        <Card className="px-5 py-4">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="t-overline text-ink-muted">
+              {debriefed ? 'Interview complete' : `Question ${Math.max(1, currentQuestion)} of ${INTERVIEW_QUESTIONS}`}
+            </p>
+            <p className="tabular t-xs text-ink-muted">
+              {scores.length} answer{scores.length === 1 ? '' : 's'} scored
             </p>
           </div>
+          <Progress
+            className="mt-2.5"
+            tone="accent"
+            value={debriefed ? 100 : (Math.max(1, currentQuestion) / INTERVIEW_QUESTIONS) * 100}
+          />
         </Card>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="min-w-0 lg:col-span-2">
+          <Card className="flex h-[calc(100dvh-16rem)] min-h-[26rem] flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-6">
+              <AnimatePresence initial={false}>
+                {messages.map((m) => {
+                  const score = m.role === 'bot' ? readScore(m.text) : null
+                  const streaming = m.id === streamingId
+                  return (
+                    <motion.div
+                      key={m.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.24, ease: [0.2, 0, 0, 1] }}
+                      className={cn('flex', m.role === 'user' && 'justify-end')}
+                    >
+                      {m.role === 'bot' ? (
+                        /* Editorial: the bot speaks as page text behind a gold rule */
+                        <div className="min-w-0 max-w-full border-l-2 border-accent pl-4 sm:pl-5">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <p className="t-overline text-ink-muted">
+                              {interview ? 'Panel' : 'Decision bot'}
+                            </p>
+                            {score !== null && (
+                              <span
+                                className={cn(
+                                  'tabular rounded-full border px-2 py-0.5 text-[0.6875rem] font-bold',
+                                  score >= 8
+                                    ? 'border-state-positive/40 text-state-positive'
+                                    : score >= 5
+                                      ? 'border-state-attention/40 text-state-attention'
+                                      : 'border-state-negative/40 text-state-negative',
+                                )}
+                              >
+                                Score {score}/10
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="t-body text-ink-secondary">
+                            {m.text ? (
+                              <>
+                                <MessageBody text={stripMarkers(m.text)} />
+                                {streaming && <StreamCaret />}
+                              </>
+                            ) : (
+                              <span className="flex items-center gap-1.5" aria-label="Thinking">
+                                {[0, 1, 2].map((i) => (
+                                  <span
+                                    key={i}
+                                    className="h-1.5 w-1.5 animate-dot-pulse rounded-full bg-accent"
+                                    style={{ animationDelay: `${i * 0.15}s` }}
+                                  />
+                                ))}
+                              </span>
+                            )}
+                          </div>
+
+                          {m.id !== 'm-1' && !streaming && (
+                            <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-rule pt-2.5">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setFeedback((f) => ({ ...f, [m.id]: f[m.id] === 'up' ? undefined : 'up' }))
+                                }
+                                aria-label="Helpful"
+                                aria-pressed={feedback[m.id] === 'up'}
+                                className={cn(
+                                  'grid h-7 w-7 place-items-center rounded-sm transition-colors hover:bg-surface-sunken',
+                                  feedback[m.id] === 'up' ? 'text-state-positive' : 'text-ink-faint hover:text-ink',
+                                )}
+                              >
+                                <ThumbsUp className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setFeedback((f) => ({
+                                    ...f,
+                                    [m.id]: f[m.id] === 'down' ? undefined : 'down',
+                                  }))
+                                }
+                                aria-label="Not helpful"
+                                aria-pressed={feedback[m.id] === 'down'}
+                                className={cn(
+                                  'grid h-7 w-7 place-items-center rounded-sm transition-colors hover:bg-surface-sunken',
+                                  feedback[m.id] === 'down' ? 'text-state-negative' : 'text-ink-faint hover:text-ink',
+                                )}
+                              >
+                                <ThumbsDown className="h-3.5 w-3.5" />
+                              </button>
+
+                              {/* Regenerate only the latest answer */}
+                              {m.id === messages[messages.length - 1].id && (
+                                <button
+                                  type="button"
+                                  onClick={regenerate}
+                                  aria-label="Regenerate answer"
+                                  className="grid h-7 w-7 place-items-center rounded-sm text-ink-faint transition-colors hover:bg-surface-sunken hover:text-ink"
+                                >
+                                  <RefreshCcw className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+
+                              {/* Download document-length answers as PDF or Word */}
+                              {isDownloadable(m.text) && (
+                                <div className="ml-auto flex items-center gap-1">
+                                  <span className="t-overline text-ink-faint">Save as</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => savePdf(m.text)}
+                                    className="t-xs flex items-center gap-1 rounded-sm px-1.5 py-1 font-semibold text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+                                  >
+                                    <FileText className="h-3.5 w-3.5" /> PDF
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => saveWord(m.text)}
+                                    className="t-xs flex items-center gap-1 rounded-sm px-1.5 py-1 font-semibold text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+                                  >
+                                    <FileType2 className="h-3.5 w-3.5" /> Word
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="t-body max-w-[85%] rounded-lg rounded-br-sm bg-ink px-4 py-3 text-canvas">
+                          <MessageBody text={m.text} />
+                        </div>
+                      )}
+                    </motion.div>
+                  )
+                })}
+              </AnimatePresence>
+
+              {/* Quick replies (only before the first exchange) */}
+              {messages.length === 1 && messages[0].quickReplies && (
+                <div className="flex flex-wrap gap-2 pl-4 sm:pl-5">
+                  {messages[0].quickReplies.map((qr) => (
+                    <button
+                      key={qr}
+                      type="button"
+                      onClick={() => sendMessage(qr)}
+                      disabled={isStreaming}
+                      className="rounded-full border border-rule px-3.5 py-1.5 text-[0.8125rem] font-semibold text-ink-secondary transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
+                    >
+                      {qr}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div ref={bottomRef} />
+            </div>
+
+            {/* Composer */}
+            <div className="shrink-0 border-t border-rule px-3 py-3 sm:px-4">
+              {exportError && (
+                <Alert tone="danger" className="mb-3">
+                  {exportError}
+                </Alert>
+              )}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  sendMessage(input)
+                }}
+                className="flex items-center gap-2"
+              >
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={
+                    interview ? 'Answer the panel…' : 'Ask me anything about your scholarships…'
+                  }
+                  aria-label="Message the decision bot"
+                  className="h-11 min-w-0 flex-1 rounded-md border border-rule bg-surface px-4 text-sm text-ink placeholder:text-ink-faint transition-colors hover:border-rule-strong focus:border-ink focus:outline-none"
+                />
+                {isStreaming ? (
+                  <Button
+                    type="button"
+                    variant="subtle"
+                    size="icon"
+                    className="h-11 w-11 shrink-0 rounded-md"
+                    onClick={stopGenerating}
+                    aria-label="Stop generating"
+                  >
+                    <Square className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="submit"
+                    variant="accent"
+                    size="icon"
+                    className="h-11 w-11 shrink-0 rounded-md"
+                    disabled={!input.trim()}
+                    aria-label="Send message"
+                  >
+                    <Send className="h-4.5 w-4.5" />
+                  </Button>
+                )}
+              </form>
+              <p className="t-xs mt-2.5 text-center text-ink-faint">
+                AI generated using your ScholarCircle data. Always verify deadlines and eligibility
+                with the provider.
+              </p>
+            </div>
+          </Card>
+        </div>
+
+        {/* Right rail */}
+        <div className="space-y-6">
+          <Card as="section">
+            <div className="border-b border-rule px-5 py-4">
+              <h2 className="t-h3 text-ink">What I can do</h2>
+            </div>
+            <ul className="rule-list">
+              {tips.map((tip) => (
+                <li key={tip.title}>
+                  <button
+                    type="button"
+                    onClick={() => sendMessage(tip.desc)}
+                    disabled={isStreaming}
+                    className="group flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-surface-sunken disabled:opacity-50"
+                  >
+                    <Sparkles className="h-4 w-4 shrink-0 text-accent" aria-hidden />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[0.8125rem] font-semibold text-ink">
+                        {tip.title}
+                      </span>
+                      <span className="t-xs mt-0.5 block text-ink-muted">{tip.desc}</span>
+                    </span>
+                    <ArrowRight
+                      className="h-4 w-4 shrink-0 text-ink-faint transition-all group-hover:translate-x-0.5 group-hover:text-ink"
+                      aria-hidden
+                    />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Card>
+
+          <Card as="section" className="px-5 py-4">
+            <h2 className="t-overline text-ink-muted">This conversation</h2>
+            <dl className="rule-list mt-2">
+              <DataRow label="Messages exchanged" value={messages.length} />
+              <DataRow
+                label="Questions you asked"
+                value={messages.filter((m) => m.role === 'user').length}
+              />
+              {avgScore !== null && <DataRow label="Interview average" value={`${avgScore}/10`} />}
+            </dl>
+          </Card>
+
+          <section className="rounded-md bg-band px-5 py-5">
+            <p className="t-overline text-accent">Grounded answers</p>
+            <p className="t-sm mt-2.5 leading-relaxed text-band-muted">
+              Replies are based on <span className="font-semibold text-band-on">your</span> profile,
+              matches and applications, not generic advice. Always confirm deadlines on the
+              provider&apos;s site.
+            </p>
+          </section>
+        </div>
       </div>
+
+      {/* Interview target picker */}
+      <Modal
+        open={showPicker}
+        onClose={() => setShowPicker(false)}
+        title="Run a mock interview"
+        description="Six questions, one at a time, with an honest score and a sharper version of every answer."
+      >
+        {matches.length > 0 ? (
+          <ul className="rule-list">
+            {matches.slice(0, 8).map((m) => (
+              <li key={m.scholarship.id}>
+                <button
+                  type="button"
+                  onClick={() => startInterview(`${m.scholarship.name} (${m.scholarship.provider})`)}
+                  className="group flex w-full items-center gap-3 py-3.5 text-left transition-colors hover:bg-surface-sunken"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-ink">
+                      {m.scholarship.name}
+                    </span>
+                    <span className="t-xs mt-0.5 block truncate text-ink-muted">
+                      {m.scholarship.provider}
+                    </span>
+                  </span>
+                  <ArrowRight
+                    className="h-4 w-4 shrink-0 text-ink-faint transition-all group-hover:translate-x-0.5 group-hover:text-ink"
+                    aria-hidden
+                  />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="t-body text-ink-muted">
+            You have no eligible matches yet, so I have nothing specific to interview you for.
+            Complete your profile first and the panel will be tailored to the real award.
+          </p>
+        )}
+      </Modal>
     </div>
   )
 }

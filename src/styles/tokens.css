@@ -1,0 +1,199 @@
+/**
+ * Obsidian & Gold, the single source of truth for the design system.
+ *
+ * Colours are stored as space-separated RGB triplets so Tailwind's
+ * `<alpha-value>` opacity modifiers (`bg-ink/60`) keep working.
+ * Nothing in the app should hardcode a hex value.
+ */
+
+:root {
+  /* Surfaces, warm paper, never pure white */
+  --canvas: 250 248 243;
+  --surface: 255 255 255;
+  --surface-sunken: 242 239 231;
+
+  /* Type */
+  --ink: 11 11 12;
+  --ink-secondary: 74 72 68;
+  --ink-muted: 124 121 114;
+  --ink-faint: 168 164 155;
+
+  /* Hairlines carry all the structure, this system has no elevation */
+  --rule: 227 223 214;
+  --rule-strong: 201 196 184;
+
+  /* The one accent. Brand, CTA and data emphasis only, never a status. */
+  --accent: 242 176 30;
+  --accent-hover: 219 158 20;
+  --accent-soft: 253 243 220;
+  --on-accent: 11 11 12;
+
+  /* Inverted band: full-bleed ink sections that appear in both themes */
+  --band: 11 11 12;
+  --on-band: 247 245 240;
+  --on-band-muted: 150 147 140;
+  --band-rule: 42 42 47;
+
+  --overlay: 11 11 12;
+
+  /* Status scale, deliberately disjoint from the gold accent */
+  --state-neutral: 107 104 98;
+  --state-progress: 47 111 181;
+  --state-attention: 180 83 15;
+  --state-positive: 26 127 75;
+  --state-negative: 179 45 45;
+  --state-special: 109 74 168;
+
+  /* Tinted status backgrounds */
+  --state-neutral-soft: 240 238 232;
+  --state-progress-soft: 231 240 250;
+  --state-attention-soft: 252 238 226;
+  --state-positive-soft: 228 242 233;
+  --state-negative-soft: 250 232 232;
+  --state-special-soft: 241 236 250;
+
+  /* Geometry, pills are for buttons, everything else stays restrained */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 12px;
+
+  /* Motion */
+  --dur-micro: 120ms;
+  --dur: 200ms;
+  --dur-enter: 400ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  color-scheme: light;
+}
+
+.dark {
+  --canvas: 11 11 12;
+  --surface: 22 22 26;
+  --surface-sunken: 16 16 19;
+
+  --ink: 247 245 240;
+  --ink-secondary: 181 178 171;
+  --ink-muted: 138 135 128;
+  --ink-faint: 106 103 97;
+
+  --rule: 38 38 43;
+  --rule-strong: 58 58 65;
+
+  /* Gold is identical in both themes, it is what makes the brand hold */
+  --accent: 242 176 30;
+  --accent-hover: 250 192 62;
+  --accent-soft: 42 33 19;
+  --on-accent: 11 11 12;
+
+  /* On near-black the inverted band steps up rather than down */
+  --band: 22 22 26;
+  --on-band: 247 245 240;
+  --on-band-muted: 138 135 128;
+  --band-rule: 48 48 55;
+
+  --overlay: 0 0 0;
+
+  --state-neutral: 154 151 144;
+  --state-progress: 122 173 233;
+  --state-attention: 231 146 82;
+  --state-positive: 90 197 141;
+  --state-negative: 232 124 124;
+  --state-special: 176 148 235;
+
+  --state-neutral-soft: 34 34 38;
+  --state-progress-soft: 20 33 48;
+  --state-attention-soft: 45 30 17;
+  --state-positive-soft: 16 40 27;
+  --state-negative-soft: 45 22 22;
+  --state-special-soft: 34 26 50;
+
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------- *
+ * Type scale, declared once, used everywhere.
+ * ---------------------------------------------------------------- */
+
+.t-display-xl,
+.t-display-lg,
+.t-display-md,
+.t-h1,
+.t-h2,
+.t-h3 {
+  font-family: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+}
+
+.t-display-xl {
+  font-size: clamp(2.75rem, 7vw, 5.5rem);
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+}
+
+.t-display-lg {
+  font-size: clamp(2.25rem, 5vw, 3.75rem);
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.t-display-md {
+  font-size: clamp(1.875rem, 3.5vw, 2.75rem);
+  line-height: 1.05;
+  letter-spacing: -0.028em;
+}
+
+.t-h1 {
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+}
+
+.t-h2 {
+  font-size: 1.5rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.t-h3 {
+  font-size: 1.125rem;
+  line-height: 1.3;
+  letter-spacing: -0.012em;
+  font-weight: 700;
+}
+
+.t-body-lg {
+  font-size: 1.0625rem;
+  line-height: 1.62;
+}
+
+.t-body {
+  font-size: 0.9375rem;
+  line-height: 1.58;
+}
+
+.t-sm {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.t-xs {
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.t-overline {
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+/* Every figure in the product sits on the same rails */
+.tabular,
+.t-display-xl,
+.t-display-lg,
+.t-display-md {
+  font-variant-numeric: tabular-nums;
+}

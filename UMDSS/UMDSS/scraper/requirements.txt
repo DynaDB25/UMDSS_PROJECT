@@ -1,0 +1,7 @@
+celery
+redis
+selenium
+webdriver-manager
+playwright
+beautifulsoup4
+lxml

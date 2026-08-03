@@ -1,0 +1,69 @@
+name: Daily scholarship scrape
+
+# Free alternative to a paid Render Cron Job. Runs the lightweight scrapers
+# once a day against the live sites and writes fresh scholarships straight to
+# the production (Supabase) database. Needs one repository secret: DATABASE_URL
+# (copy it from Render → your web service → Environment).
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # 06:00 UTC every day
+  workflow_dispatch: {}     # lets you run it on demand from the Actions tab
+
+concurrency:
+  group: daily-scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: UMDSS/UMDSS
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run scrapers
+        working-directory: UMDSS/UMDSS
+        env:
+          # Points Django at the live Supabase Postgres instead of local sqlite.
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # No broker is contacted (run_scraper runs synchronously), but keep the
+          # eager flag explicit so a missing Redis never trips anything up.
+          CELERY_TASK_ALWAYS_EAGER: 'true'
+        run: |
+          # 1) refresh the source list (idempotent; heals disabled sources)
+          python manage.py seed_sources
+          # 2) pull fresh scholarships from the structured feeds
+          python manage.py run_scraper
+          # 3) drop anything whose deadline has passed
+          python manage.py purge_expired
+
+      # Work out how students actually apply to each scholarship, so the app has
+      # a real application form ready instead of crawling while someone waits.
+      # Runs after the purge so we never crawl a listing we just deleted.
+      #
+      # Isolated deliberately: this makes outbound requests to many third-party
+      # sites, so it is capped and allowed to fail. Scraping is the job that
+      # matters, and a slow or unreachable provider must not fail the workflow
+      # or block the scholarships that were already written.
+      - name: Discover application forms
+        working-directory: UMDSS/UMDSS
+        timeout-minutes: 12
+        continue-on-error: true
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # Hits are cached forever and misses back off a week, so this steadily
+          # works through the catalogue rather than re-crawling the same rows.
+          python manage.py discover_forms --limit 80

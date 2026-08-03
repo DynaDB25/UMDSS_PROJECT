@@ -1,165 +1,323 @@
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
-import { ClipboardList, CheckCircle2, Circle, Calendar, ChevronRight } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
+import { ClipboardList, Check, Calendar, ChevronRight, Inbox } from 'lucide-react'
 import { api } from '../api/endpoints'
-import { Card, StatusPill, Progress } from '../components/ui'
+import {
+  Alert,
+  ButtonLink,
+  Card,
+  EmptyState,
+  Progress,
+  Stat,
+  StatRow,
+  StatusPill,
+  Tabs,
+} from '../components/ui'
 import { ScholarshipLogo } from '../components/ScholarshipLogo'
+import { PageListSkeleton } from '../components/skeletons'
 import { cn } from '../lib/cn'
 import type { ApplicationStatus } from '../data/types'
+import { listItem, stagger } from '../lib/motion'
 
-const tabs: (ApplicationStatus | 'All')[] = ['All', 'Draft', 'Submitted', 'Under Review', 'Interview', 'Awarded']
+type Tab = ApplicationStatus | 'All'
+
+const TABS: Tab[] = [
+  'All',
+  'Draft',
+  'Submitted',
+  'Under Review',
+  'Interview',
+  'Awarded',
+  'Rejected',
+]
 
 export default function Applications() {
   const [applications, setApplications] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<(typeof tabs)[number]>('All')
+  const [tab, setTab] = useState<Tab>('All')
   const [open, setOpen] = useState<string | null>(null)
 
   useEffect(() => {
-    api.applications.list().then(data => {
-      setApplications(data)
-      if (data.length > 0) setOpen(data[0].id)
-    }).finally(() => setLoading(false))
+    api.applications
+      .list()
+      .then((data) => {
+        setApplications(data)
+        if (data.length > 0) setOpen(data[0].id)
+      })
+      .catch(() => setApplications([]))
+      .finally(() => setLoading(false))
   }, [])
 
-  const filtered = tab === 'All' ? applications : applications.filter((a) => a.status === tab)
+  if (loading) return <PageListSkeleton label="Loading applications" rows={4} />
 
-  const summary = [
-    { label: 'Total applications', value: applications.length, tone: 'text-ink-900' },
-    { label: 'In progress', value: applications.filter((a) => ['Submitted', 'Under Review', 'Interview'].includes(a.status)).length, tone: 'text-amber-600' },
-    { label: 'Interviews', value: applications.filter((a) => a.status === 'Interview').length, tone: 'text-violet-600' },
-    { label: 'Drafts', value: applications.filter((a) => a.status === 'Draft').length, tone: 'text-ink-500' },
-  ]
-  
-  if (loading) return <div>Loading applications...</div>
+  const filtered = tab === 'All' ? applications : applications.filter((a) => a.status === tab)
+  const inProgress = applications.filter((a) =>
+    ['Submitted', 'Under Review', 'Interview'].includes(a.status),
+  ).length
+  const interviews = applications.filter((a) => a.status === 'Interview').length
+  const drafts = applications.filter((a) => a.status === 'Draft').length
+
+  const tabItems = TABS.map((t) => ({
+    value: t,
+    label: t,
+    count: t === 'All' ? applications.length : applications.filter((a) => a.status === t).length,
+  }))
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <ClipboardList className="h-5 w-5 text-brand-600" />
-        <h1 className="font-display text-2xl font-extrabold text-ink-900">My Applications</h1>
-      </div>
+    <div className="space-y-8">
+      <header className="border-b border-rule pb-6">
+        <p className="t-overline text-accent">Tracker</p>
+        <h1 className="t-h1 mt-2 text-ink">My applications</h1>
+        <p className="t-body mt-2 max-w-prose text-ink-muted">
+          Every award you have started, from draft through to the funder&apos;s decision.
+        </p>
+      </header>
 
-      {/* Summary */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {summary.map((s) => (
-          <Card key={s.label} className="p-5">
-            <p className={cn('font-display text-3xl font-extrabold', s.tone)}>{s.value}</p>
-            <p className="mt-1 text-sm text-ink-500">{s.label}</p>
-          </Card>
-        ))}
-      </div>
+      <StatRow>
+        <Stat label="Total applications" value={applications.length} icon={<ClipboardList />} />
+        <Stat label="In progress" value={inProgress} detail="Submitted or further" />
+        <Stat label="Interviews" value={interviews} tone={interviews > 0 ? 'accent' : 'ink'} />
+        <Stat label="Drafts" value={drafts} detail={drafts > 0 ? 'Not sent yet' : 'None waiting'} />
+      </StatRow>
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={cn(
-              'rounded-xl px-3.5 py-2 text-sm font-medium transition',
-              tab === t
-                ? 'bg-brand-700 text-white shadow-sm'
-                : 'bg-white text-ink-600 ring-1 ring-inset ring-ink-200 hover:bg-ink-50',
-            )}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <Tabs<Tab> items={tabItems} value={tab} onChange={setTab} />
 
-      {/* List */}
-      <div className="space-y-4">
-        {filtered.map((a, i) => {
-          const isOpen = open === a.id
-          return (
-            <motion.div
-              key={a.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: i * 0.04 }}
-            >
-              <Card className="overflow-hidden">
-                <button
-                  onClick={() => setOpen(isOpen ? null : a.id)}
-                  className="flex w-full items-center gap-4 p-5 text-left transition hover:bg-ink-50/50"
-                >
-                  <ScholarshipLogo scholarshipId={a.scholarshipId} initials={a.initials} color={a.logoColor} className="h-12 w-12 rounded-xl" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold text-ink-900">{a.scholarshipName}</p>
-                      <StatusPill status={a.status} />
-                    </div>
-                    <p className="text-sm text-ink-500">{a.provider} · {a.amount}</p>
-                  </div>
-                  <div className="hidden w-40 sm:block">
-                    <div className="flex items-center gap-2">
-                      <Progress value={a.progress} tone={a.status === 'Interview' ? 'gold' : a.status === 'Awarded' ? 'green' : 'brand'} />
-                      <span className="text-xs font-medium text-ink-400">{a.progress}%</span>
-                    </div>
-                    <p className="mt-1 text-xs text-ink-400">Updated {a.lastUpdate}</p>
-                  </div>
-                  <ChevronRight className={cn('h-5 w-5 text-ink-400 transition', isOpen && 'rotate-90')} />
-                </button>
-
-                {isOpen && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    className="border-t border-ink-100 bg-ink-50/40 px-5 py-6"
+      {filtered.length > 0 ? (
+        <motion.div initial="hidden" animate="show" variants={stagger(0, 0.04)} className="space-y-3">
+          {filtered.map((a) => {
+            const isOpen = open === a.id
+            return (
+              <motion.div key={a.id} variants={listItem}>
+                <Card className="overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setOpen(isOpen ? null : a.id)}
+                    aria-expanded={isOpen}
+                    className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-surface-sunken sm:px-5"
                   >
-                    <div className="grid gap-6 lg:grid-cols-3">
-                      <div className="lg:col-span-2">
-                        <h3 className="mb-4 text-sm font-semibold text-ink-700">Application timeline</h3>
-                        <ol className="relative ml-1 space-y-5 border-l-2 border-ink-200 pl-6">
-                          {a.timeline.map((t: any) => (
-                            <li key={t.label} className="relative">
-                              <span
-                                className={cn(
-                                  'absolute -left-[31px] grid h-6 w-6 place-items-center rounded-full ring-4 ring-ink-50',
-                                  t.done ? 'bg-emerald-500 text-white' : 'bg-white text-ink-300 ring-2 ring-ink-200',
-                                )}
-                              >
-                                {t.done ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-3 w-3" />}
-                              </span>
-                              <p className={cn('text-sm font-semibold', t.done ? 'text-ink-800' : 'text-ink-500')}>
-                                {t.label}
-                              </p>
-                              <p className="text-xs text-ink-400">{t.date}</p>
-                            </li>
-                          ))}
-                        </ol>
+                    <ScholarshipLogo
+                      name={a.scholarshipName}
+                      provider={a.provider}
+                      initials={a.initials}
+                      className="h-11 w-11"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="line-clamp-2 font-display text-[0.9375rem] font-bold leading-snug tracking-tight text-ink sm:line-clamp-1">
+                          {a.scholarshipName}
+                        </p>
+                        <StatusPill status={a.status} />
                       </div>
-
-                      <div className="space-y-3">
-                        {a.status === 'Interview' && (
-                          <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
-                            <div className="flex items-center gap-2 text-sm font-semibold text-violet-800">
-                              <Calendar className="h-4 w-4" /> Interview scheduled
-                            </div>
-                            <p className="mt-1 text-sm text-violet-700">Thu 03 Jul 2026 · 10:00 AM</p>
-                            <p className="text-xs text-violet-600">MTN House, Ridge, Accra</p>
-                            <button className="mt-3 w-full rounded-lg bg-violet-700 py-2 text-xs font-semibold text-white">
-                              Prepare with the bot
-                            </button>
-                          </div>
-                        )}
-                        <div className="rounded-xl bg-white p-4 ring-1 ring-ink-200">
-                          <p className="text-xs text-ink-400">Submitted on</p>
-                          <p className="text-sm font-semibold text-ink-800">{a.submittedOn}</p>
-                        </div>
-                        <button className="w-full rounded-xl border border-ink-200 bg-white py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50">
-                          {a.status === 'Draft' ? 'Continue application' : 'View submitted application'}
-                        </button>
+                      <p className="t-sm mt-0.5 truncate text-ink-muted">
+                        {a.provider} · {a.amount}
+                      </p>
+                      {/* Progress inline on phones, where the side column is hidden */}
+                      <div className="mt-2.5 flex items-center gap-2.5 sm:hidden">
+                        <Progress
+                          value={a.progress}
+                          size="sm"
+                          className="flex-1"
+                          tone={a.status === 'Awarded' ? 'positive' : a.status === 'Interview' ? 'accent' : 'ink'}
+                        />
+                        <span className="tabular t-xs shrink-0 font-semibold text-ink-muted">
+                          {a.progress}%
+                        </span>
                       </div>
                     </div>
-                  </motion.div>
-                )}
-              </Card>
-            </motion.div>
-          )
-        })}
-      </div>
+
+                    <div className="hidden w-40 shrink-0 sm:block">
+                      <div className="flex items-center gap-2.5">
+                        <Progress
+                          value={a.progress}
+                          className="flex-1"
+                          tone={a.status === 'Awarded' ? 'positive' : a.status === 'Interview' ? 'accent' : 'ink'}
+                        />
+                        <span className="tabular t-xs w-8 text-right font-semibold text-ink-muted">
+                          {a.progress}%
+                        </span>
+                      </div>
+                      <p className="t-xs mt-1.5 text-ink-muted">Updated {a.lastUpdate}</p>
+                    </div>
+
+                    <ChevronRight
+                      className={cn(
+                        'h-5 w-5 shrink-0 text-ink-faint transition-transform duration-[--dur]',
+                        isOpen && 'rotate-90',
+                      )}
+                      aria-hidden
+                    />
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {isOpen && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}
+                        className="overflow-hidden border-t border-rule bg-surface-sunken"
+                      >
+                        <div className="grid gap-8 px-4 py-6 sm:px-5 lg:grid-cols-3">
+                          {/* Timeline. Guarded: an application with no steps
+                              recorded would otherwise render a bare heading
+                              over nothing at all. */}
+                          <div className="lg:col-span-2">
+                            <h3 className="t-overline text-ink-muted">Application timeline</h3>
+                            {(a.timeline || []).length === 0 ? (
+                              <p className="t-sm mt-3 text-ink-muted">
+                                No steps recorded yet. They appear here as this application moves
+                                through the funder&apos;s process.
+                              </p>
+                            ) : (
+                            <ol className="mt-4 ml-[9px] space-y-5 border-l border-rule-strong pl-6">
+                              {(a.timeline || []).map((t: any) => (
+                                <li key={t.label} className="relative">
+                                  <span
+                                    className={cn(
+                                      'absolute -left-[31px] grid h-[18px] w-[18px] place-items-center rounded-full ring-4 ring-surface-sunken',
+                                      t.done
+                                        ? 'bg-accent text-accent-on'
+                                        : 'border border-rule-strong bg-surface text-transparent',
+                                    )}
+                                    aria-hidden
+                                  >
+                                    <Check className="h-2.5 w-2.5" strokeWidth={3.5} />
+                                  </span>
+                                  <p
+                                    className={cn(
+                                      'text-sm font-semibold',
+                                      t.done ? 'text-ink' : 'text-ink-muted',
+                                    )}
+                                  >
+                                    {t.label}
+                                  </p>
+                                  <p className="tabular t-xs mt-0.5 text-ink-muted">{t.date}</p>
+                                </li>
+                              ))}
+                            </ol>
+                            )}
+                          </div>
+
+                          {/* Side panel */}
+                          <div className="space-y-3">
+                            {a.status === 'Draft' && (
+                              <Alert tone="warning" title="Not submitted yet">
+                                Your pack is ready. Send it to {a.provider} on their own form, then
+                                mark it submitted.
+                              </Alert>
+                            )}
+
+                            {a.status === 'Interview' && (
+                              <div className="rounded-md border border-state-special/30 bg-state-special-soft p-4">
+                                <p className="flex items-center gap-2 text-sm font-semibold text-state-special">
+                                  <Calendar className="h-4 w-4 shrink-0" aria-hidden />
+                                  Interview stage
+                                </p>
+                                <p className="t-sm mt-1.5 text-state-special/85">
+                                  {a.provider} will contact you with the date and venue. Watch your
+                                  SMS alerts.
+                                </p>
+                                <ButtonLink
+                                  to="/app/assistant"
+                                  size="sm"
+                                  block
+                                  className="mt-3 bg-state-special text-white hover:bg-state-special/85"
+                                >
+                                  Prepare with the bot
+                                </ButtonLink>
+                              </div>
+                            )}
+
+                            {Array.isArray(a.attachedDocuments) && a.attachedDocuments.length > 0 && (
+                              <Card className="p-4">
+                                <p className="t-overline text-ink-muted">Documents</p>
+                                <ul className="mt-2.5 space-y-2">
+                                  {a.attachedDocuments.map((doc: any, idx: number) => (
+                                    <li key={idx} className="flex items-start gap-2.5">
+                                      <span
+                                        className={cn(
+                                          'mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border',
+                                          doc.have
+                                            ? 'border-state-positive bg-state-positive text-white'
+                                            : 'border-rule-strong text-transparent',
+                                        )}
+                                        aria-hidden
+                                      >
+                                        <Check className="h-2.5 w-2.5" strokeWidth={3.5} />
+                                      </span>
+                                      <span
+                                        className={cn(
+                                          't-xs min-w-0 flex-1',
+                                          doc.have ? 'text-ink' : 'text-ink-muted',
+                                        )}
+                                      >
+                                        {doc.requirement}
+                                        {doc.have && doc.name && (
+                                          <span className="mt-0.5 block truncate text-state-positive">
+                                            {doc.name}
+                                          </span>
+                                        )}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </Card>
+                            )}
+
+                            {a.submittedOn && a.submittedOn !== '-' && (
+                              <Card className="p-4">
+                                <p className="t-overline text-ink-muted">Submitted on</p>
+                                <p className="tabular mt-1 text-sm font-semibold text-ink">
+                                  {a.submittedOn}
+                                </p>
+                              </Card>
+                            )}
+
+                            <ButtonLink
+                              to={`/app/scholarships/${a.scholarshipId}`}
+                              variant="subtle"
+                              block
+                            >
+                              {a.status === 'Draft' ? 'Continue application' : 'View scholarship'}
+                            </ButtonLink>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </Card>
+              </motion.div>
+            )
+          })}
+        </motion.div>
+      ) : applications.length === 0 ? (
+        <EmptyState
+          icon={<ClipboardList />}
+          title="No applications yet"
+          description="When you apply to a scholarship it shows up here so you can track it end to end, from submission through to the final decision."
+          action={
+            <ButtonLink to="/app/scholarships" variant="accent">
+              Browse your matches
+            </ButtonLink>
+          }
+        />
+      ) : (
+        <EmptyState
+          icon={<Inbox />}
+          title={`Nothing under “${tab}”`}
+          description="You have no applications with this status yet."
+          action={
+            <button
+              type="button"
+              onClick={() => setTab('All')}
+              className="text-sm font-semibold text-ink underline underline-offset-4 hover:text-accent"
+            >
+              Show all applications
+            </button>
+          }
+        />
+      )}
     </div>
   )
 }

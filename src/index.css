@@ -1,63 +1,88 @@
+@import './styles/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 
-* {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  html {
+    scroll-behavior: smooth;
+    background-color: rgb(var(--canvas));
+  }
+
+  body {
+    margin: 0;
+    font-family: 'Inter Tight', ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.9375rem;
+    line-height: 1.58;
+    background-color: rgb(var(--canvas));
+    color: rgb(var(--ink));
+    transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+  }
+
+  /* One focus treatment for the whole product: a hard offset ring, never a blur. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--ink));
+    outline-offset: 2px;
+    border-radius: var(--r-sm);
+  }
+
+  .dark :focus-visible {
+    outline-color: rgb(var(--accent));
+  }
+
+  ::selection {
+    background: rgb(var(--accent));
+    color: rgb(var(--on-accent));
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--rule-strong));
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--ink-faint));
+    background-clip: content-box;
+  }
 }
 
-html {
-  scroll-behavior: smooth;
+@layer components {
+  /* Hairline-separated list, the workhorse layout of this redesign. */
+  .rule-list > * + * {
+    border-top: 1px solid rgb(var(--rule));
+  }
+
+  /* Ink sections keep their own focus/selection colours legible. */
+  .on-band ::selection {
+    background: rgb(var(--accent));
+    color: rgb(var(--on-accent));
+  }
 }
 
-body {
-  margin: 0;
-  font-family: var(--font-sans);
-  background-color: var(--color-ink-50);
-  color: var(--color-ink-800);
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-ink-300);
-  border-radius: 9999px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-ink-400);
-  background-clip: content-box;
-}
-
-@keyframes float-slow {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-12px); }
-}
-.animate-float-slow {
-  animation: float-slow 6s ease-in-out infinite;
-}
-
-@keyframes shimmer {
-  100% { transform: translateX(100%); }
-}
-
-.bg-grid {
-  background-image:
-    linear-gradient(to right, rgba(15, 118, 110, 0.06) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(15, 118, 110, 0.06) 1px, transparent 1px);
-  background-size: 32px 32px;
-}
-
-.glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
