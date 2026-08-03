@@ -415,7 +415,7 @@ export default function Landing() {
 
           <div className="mt-12 flex flex-col gap-3 border-t border-band-rule pt-7 sm:flex-row sm:items-center sm:justify-between">
             <p className="t-xs text-band-muted">
-              ScholarCircle · KNUST Computer Science &amp; Engineering · 2026
+              &copy; 2026 ScholarCircle. All rights reserved.
             </p>
             <p className="t-xs text-band-muted">Built for Ghana&rsquo;s connectivity realities.</p>
           </div>
