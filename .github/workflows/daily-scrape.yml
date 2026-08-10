@@ -1,9 +1,11 @@
-name: Daily scholarship scrape
+name: Daily scrape and alerts
 
 # Free alternative to a paid Render Cron Job. Runs the lightweight scrapers
-# once a day against the live sites and writes fresh scholarships straight to
-# the production (Supabase) database. Needs one repository secret: DATABASE_URL
-# (copy it from Render → your web service → Environment).
+# once a day against the live sites, writes fresh scholarships straight to the
+# production (Supabase) database, then texts students whose deadlines are
+# closing in. Secrets needed: DATABASE_URL (copy it from Render → your web
+# service → Environment), plus ARKESEL_API_KEY and ARKESEL_SENDER_ID for the
+# SMS step.
 
 on:
   schedule:
@@ -67,3 +69,42 @@ jobs:
           # Hits are cached forever and misses back off a week, so this steadily
           # works through the catalogue rather than re-crawling the same rows.
           python manage.py discover_forms --limit 80
+
+      # Texts go out last, once the catalogue is fresh, so a deadline reminder
+      # can never be sent for a listing this same run was about to purge.
+      #
+      # This is also the only clock the SMS features have. Celery beat never
+      # fires here — CELERY_TASK_ALWAYS_EAGER is on and no worker or beat
+      # process is deployed — so anything scheduled in CELERY_BEAT_SCHEDULE
+      # would silently never run.
+      #
+      # Not continue-on-error, unlike the crawl above: the scraping is already
+      # committed by this point, and a step whose whole job is to deliver
+      # messages should go red when it cannot.
+      #
+      # Before the first scheduled run, mark the existing backlog as already
+      # announced, or every student is texted about every strong match they
+      # already had:
+      #     python manage.py notify_new_matches --mark-only
+      - name: Send SMS and email alerts
+        working-directory: UMDSS/UMDSS
+        timeout-minutes: 10
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SMS_BACKEND: arkesel
+          ARKESEL_API_KEY: ${{ secrets.ARKESEL_API_KEY }}
+          ARKESEL_SENDER_ID: ${{ secrets.ARKESEL_SENDER_ID }}
+          EMAIL_PROVIDER: brevo
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          # Must be a sender Brevo has verified, or every send 400s.
+          BREVO_SENDER_EMAIL: ${{ secrets.BREVO_SENDER_EMAIL }}
+          BREVO_SENDER_NAME: ScholarCircle
+          # Set either repository variable to 'false' to stop that channel
+          # without touching its credentials.
+          SMS_ENABLED: ${{ vars.SMS_ENABLED || 'true' }}
+          EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || 'true' }}
+        run: |
+          # 06:00 UTC is already outside the default 21:00-06:00 quiet window,
+          # and Ghana keeps GMT year round, so these land at a civil hour.
+          python manage.py send_deadline_reminders
+          python manage.py notify_new_matches

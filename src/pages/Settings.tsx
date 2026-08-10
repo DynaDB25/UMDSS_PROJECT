@@ -495,10 +495,13 @@ export default function Settings() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-[0.8125rem] font-semibold text-ink">SMS verification</p>
-                      <Badge tone="positive">Active</Badge>
+                      {/* There is no OTP anywhere in the stack. This said
+                          "Active", which told students their account had a
+                          second factor protecting it when it did not. */}
+                      <Badge>Not set up</Badge>
                     </div>
-                    <p className="t-xs mt-0.5 truncate text-ink-muted">
-                      Codes sent to {user.profile?.phone || 'your registered number'}
+                    <p className="t-xs mt-0.5 text-ink-muted">
+                      Sign-in codes are not enabled. Deadline reminders still reach you by SMS.
                     </p>
                   </div>
                   <Button variant="subtle" size="sm" className="shrink-0">

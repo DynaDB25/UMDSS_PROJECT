@@ -70,13 +70,29 @@ export default function Notifications() {
     })
   }
 
-  // Delivery targets come from the signed-in student's own profile.
-  const phone = user?.profile?.phone || 'No phone number on file'
-  const email = user?.email || 'No email on file'
+  // Delivery targets come from the signed-in student's own profile. A channel
+  // reads as on only when it could actually deliver: the student has not opted
+  // out and there is somewhere to send to. Absent opt-in means on, matching the
+  // defaults on StudentProfile.
+  const phone = user?.profile?.phone
+  const email = user?.email
+  const smsOn = user?.profile?.sms_opt_in !== false && Boolean(phone)
+  const emailOn = user?.profile?.email_opt_in !== false && Boolean(email)
 
   const channels = [
-    { icon: Smartphone, label: 'SMS alerts', sub: `Hubtel · ${phone}`, on: true, primary: true },
-    { icon: Mail, label: 'Email alerts', sub: email, on: true },
+    {
+      icon: Smartphone,
+      label: 'SMS alerts',
+      sub: phone ? `Arkesel · ${phone}` : 'No phone number on file',
+      on: smsOn,
+      primary: true,
+    },
+    {
+      icon: Mail,
+      label: 'Email alerts',
+      sub: email ? `Brevo · ${email}` : 'No email on file',
+      on: emailOn,
+    },
     { icon: Bell, label: 'In-app alerts', sub: 'Shown on your dashboard', on: true },
   ]
 

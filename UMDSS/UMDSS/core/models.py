@@ -27,6 +27,11 @@ class StudentProfile(models.Model):
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     phone = models.CharField(max_length=20, blank=True)
+    # Registration states that deadline reminders arrive by SMS, so this starts
+    # on. Turning it off stops every text; the in-app notification is still
+    # written, so nobody loses the alert itself by opting out of the channel.
+    sms_opt_in = models.BooleanField(default=True)
+    email_opt_in = models.BooleanField(default=True)
 
     # Blank until onboarding completes; matching treats a blank type as an
     # incomplete profile and will not claim confident eligibility.
@@ -300,3 +305,66 @@ class Notification(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class OutboundMessage(models.Model):
+    """One attempted delivery on a real channel, kept whether or not it left.
+
+    SMS credits are money and both gateways are somebody else's uptime, so
+    every attempt is recorded: what went out, where, and what came back.
+    Failures are rows too — a number or address the provider rejected is the
+    single most useful thing to see when a student says the reminder never
+    arrived.
+    """
+    CHANNEL_CHOICES = [('SMS', 'SMS'), ('Email', 'Email')]
+    STATUS_CHOICES = [
+        # Queued is written before the provider is called, so the unique index
+        # below claims the event first. A row still Queued long afterwards means
+        # the process died mid-send and we genuinely do not know what happened.
+        ('Queued', 'Queued'),
+        ('Sent', 'Sent'),
+        ('Failed', 'Failed'),
+        ('Skipped', 'Skipped'),
+    ]
+
+    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='outbound_messages')
+    notification = models.ForeignKey(
+        Notification, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='outbound_messages',
+        help_text='The in-app alert this delivery accompanied, if any.')
+    channel = models.CharField(max_length=10, choices=CHANNEL_CHOICES)
+    recipient = models.CharField(
+        max_length=254, blank=True,
+        help_text='E.164 number or email address. Blank when the profile held '
+                  'nothing usable.')
+    # SMS has no subject; the column stays empty on those rows.
+    subject = models.CharField(max_length=200, blank=True)
+    body = models.TextField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES)
+    provider = models.CharField(max_length=20, default='console')
+    provider_message_id = models.CharField(max_length=120, blank=True)
+    # Why a Skipped row was skipped, or what the provider said about a failure.
+    error = models.CharField(max_length=300, blank=True)
+    # Identifies the event this delivery was for, e.g. 'deadline:draft:3:41:7'
+    # for the seven-day warning to student 3 about scholarship 41. Lets a re-run
+    # recognise work it has already done. Blank for sends with no natural key.
+    dedupe_key = models.CharField(max_length=120, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        constraints = [
+            # A partial unique index, so the database itself refuses a second
+            # delivery for the same event on the same channel. The daily job
+            # re-runs on every push and can be triggered by hand; neither should
+            # message anyone twice. Scoped by channel so that one event can
+            # still reach a student by both SMS and email.
+            models.UniqueConstraint(
+                fields=['channel', 'dedupe_key'],
+                condition=~models.Q(dedupe_key=''),
+                name='unique_outbound_channel_dedupe_key',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.channel} to {self.recipient or "(none)"} [{self.status}]'

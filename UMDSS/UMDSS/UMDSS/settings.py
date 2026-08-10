@@ -207,6 +207,18 @@ LOGGING = {
             'level': os.environ.get('SCRAPER_LOG_LEVEL', 'INFO'),
             'propagate': False,
         },
+        # Every send, skip and gateway error. Without this the console backend
+        # writes to nowhere and a dev cannot tell whether a text "went".
+        'sms': {
+            'handlers': ['console'],
+            'level': os.environ.get('SMS_LOG_LEVEL', 'INFO'),
+            'propagate': False,
+        },
+        'mailer': {
+            'handlers': ['console'],
+            'level': os.environ.get('EMAIL_LOG_LEVEL', 'INFO'),
+            'propagate': False,
+        },
     },
 }
 
@@ -223,7 +235,75 @@ MEDIA_ROOT = BASE_DIR / 'media'
 import base64
 # 256-bit encryption key (32 bytes encoded in base64)
 VAULT_ENCRYPTION_KEY = os.environ.get(
-    'VAULT_ENCRYPTION_KEY', 
+    'VAULT_ENCRYPTION_KEY',
     base64.urlsafe_b64encode(os.urandom(32)).decode('utf-8')
 )
+
+# ──────────────────────────────────────────────────────
+# SMS
+# ──────────────────────────────────────────────────────
+
+# Which gateway to use: 'console' logs the message and sends nothing, 'arkesel'
+# is live. Console is the default deliberately, so that a fresh checkout or a
+# CI run cannot spend credits no matter what code it runs.
+SMS_BACKEND = os.environ.get('SMS_BACKEND', 'console')
+
+ARKESEL_API_KEY = os.environ.get('ARKESEL_API_KEY', '')
+# The name recipients see. An alphanumeric sender ID has to be registered and
+# approved by the mobile networks themselves before they will carry it, so this
+# must match what was approved on the Arkesel dashboard; an unregistered one is
+# rejected at send time.
+#
+# Alphanumeric sender IDs are capped at 11 characters by the GSM standard, so
+# the full 'ScholarCircle' (13) will not fit. 'ScholarCirc' is the longest
+# truncation that does.
+ARKESEL_SENDER_ID = os.environ.get('ARKESEL_SENDER_ID', 'ScholarCirc')
+
+# Master switch, kept separate from the credentials so sending can be stopped
+# in production by flipping one variable rather than deleting the API key.
+SMS_ENABLED = os.environ.get('SMS_ENABLED', 'true').lower() == 'true'
+
+# Ceiling on texts across the whole install in any rolling 24 hours. This is a
+# blast radius limit rather than a business rule: a bug that starts texting in
+# a loop stops here instead of at the bottom of the prepaid balance.
+SMS_DAILY_CAP = int(os.environ.get('SMS_DAILY_CAP', '200'))
+
+# One GSM-7 segment. See core.sms.dispatch._trim for why overrunning it costs
+# more than it looks.
+SMS_MAX_LENGTH = int(os.environ.get('SMS_MAX_LENGTH', '160'))
+
+SMS_TIMEOUT_SECONDS = int(os.environ.get('SMS_TIMEOUT_SECONDS', '15'))
+
+# Do-not-disturb window, as hours on a 24-hour clock. TIME_ZONE is UTC and
+# Ghana keeps GMT all year, so these read as Accra local hours with no
+# conversion. Set both to the same value to disable.
+SMS_QUIET_HOURS_START = int(os.environ.get('SMS_QUIET_HOURS_START', '21'))
+SMS_QUIET_HOURS_END = int(os.environ.get('SMS_QUIET_HOURS_END', '6'))
+
+# ──────────────────────────────────────────────────────
+# Email
+# ──────────────────────────────────────────────────────
+#
+# Deliberately not called EMAIL_BACKEND: Django already owns that name for
+# django.core.mail, and reusing it would quietly hijack every send_mail call in
+# the project.
+EMAIL_PROVIDER = os.environ.get('EMAIL_PROVIDER', 'console')
+
+BREVO_API_KEY = os.environ.get('BREVO_API_KEY', '')
+# Brevo only sends from a verified sender or a verified domain and rejects
+# anything else with a 400, so this must match a sender listed on the account.
+# Verifying a real domain is what lifts that restriction, and it is also what
+# fixes the DMARC problem of sending mail "from" a gmail.com address through a
+# third party — strict receivers will spam-folder or drop that.
+BREVO_SENDER_EMAIL = os.environ.get('BREVO_SENDER_EMAIL', '')
+# Display name only. Free text, never verified, safe to change at any time.
+BREVO_SENDER_NAME = os.environ.get('BREVO_SENDER_NAME', 'ScholarCircle')
+
+EMAIL_ENABLED = os.environ.get('EMAIL_ENABLED', 'true').lower() == 'true'
+
+# Brevo's free plan allows 300 sends a day. Staying under it leaves headroom
+# for anything added later that also needs to mail a student.
+EMAIL_DAILY_CAP = int(os.environ.get('EMAIL_DAILY_CAP', '250'))
+
+EMAIL_TIMEOUT_SECONDS = int(os.environ.get('EMAIL_TIMEOUT_SECONDS', '15'))
 

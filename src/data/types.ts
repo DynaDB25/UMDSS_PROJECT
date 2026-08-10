@@ -16,6 +16,10 @@ export type LevelScope =
 
 export interface StudentProfile {
   phone: string
+  // Off means no texts / no mail. The in-app alert is still written either
+  // way, so opting out costs the student the channel, not the notification.
+  sms_opt_in: boolean
+  email_opt_in: boolean
   student_type: '' | 'SHS' | 'University'
   // SHS track
   shs_school: string

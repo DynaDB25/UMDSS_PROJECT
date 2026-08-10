@@ -344,14 +344,19 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 doc_line += ' Upload the missing ones to complete your pack.'
         else:
             doc_line = 'This funder did not list specific document requirements.'
-        Notification.objects.create(
-            student=request.user,
-            channel='System',
+        from .notifications import notify
+        # No text: the student is looking at the screen that created this, so a
+        # credit spent to tell them what they just did is a credit wasted. Email
+        # earns its place because the document checklist below is something they
+        # will want to come back to when they are next near their files.
+        notify(
+            request.user,
             category='Status',
             title=f'Application started: {scholarship.name}',
             body=(f'Your application pack for {scholarship.provider} is ready. {doc_line} '
                   f'Next step: send it to the provider, then mark it submitted here to track it.'),
-            time='Just now',
+            email=True,
+            dedupe_key=f'app-started:{app.id}',
         )
         return Response(self.get_serializer(app).data, status=status.HTTP_201_CREATED)
 
@@ -440,14 +445,25 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         app.timeline = timeline
         app.save(update_fields=['status', 'submitted_on', 'progress', 'timeline'])
 
-        Notification.objects.create(
-            student=request.user,
-            channel='System',
+        from .notifications import notify
+        # This one gets both: it is the receipt for the only step that happens
+        # off-platform, and it is worth having in a student's messages and inbox
+        # when a provider later asks whether they applied. dedupe_key means a
+        # double tap on Submit cannot send it twice on either channel.
+        short_name = app.scholarship.name[:60].rstrip()
+        notify(
+            request.user,
             category='Status',
             title=f'Application submitted: {app.scholarship.name}',
             body=(f'You marked your {app.scholarship.name} application as submitted to '
                   f'{app.scholarship.provider}. We will keep it in your tracker.'),
-            time='Just now',
+            sms_text=(f'ScholarCircle: Your {short_name} application is marked submitted. '
+                      f'Track it in the app.'),
+            email=True,
+            dedupe_key=f'app-submitted:{app.id}',
+            # The student is mid-action, so the do-not-disturb window is about
+            # somebody else's sleep, not theirs.
+            ignore_quiet_hours=True,
         )
         return Response(self.get_serializer(app).data)
 
