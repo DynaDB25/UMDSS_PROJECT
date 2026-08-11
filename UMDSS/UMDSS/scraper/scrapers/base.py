@@ -11,15 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 class NoRelevantResultsError(Exception):
-    """Raised when a scrape yields nothing that looks like a scholarship."""
+    """Raised when a scrape yields nothing that looks like a scholarship.
 
-
-class FallbackOnlyError(Exception):
-    """Raised when the live scrape produced nothing and curated data was substituted.
-
-    The curated rows are still saved (flagged origin='curated') so the app keeps a
-    baseline, but the run is a failure: nothing was actually confirmed against the
-    live site.
+    The run is recorded as a failure and nothing is written. The app would
+    rather show fewer scholarships than one whose figures were invented, so
+    there is deliberately no fallback that substitutes hand-written data.
     """
 
 
@@ -76,10 +72,6 @@ class BaseScraper:
     def __init__(self, source):
         self.source = source
         self.run_record = None
-        # Set by a subclass when it substitutes hardcoded "known data" because the
-        # live scrape came back empty. Fallback only fires when nothing was scraped,
-        # so it taints the whole result set, not individual items.
-        self._used_fallback = False
         self.rate_limiter = RateLimiter(
             min_delay=source.min_delay,
             max_delay=source.max_delay,
@@ -114,18 +106,6 @@ class BaseScraper:
 
     def is_relevant(self, item: dict) -> bool:
         return is_relevant_title(item.get('name'))
-
-    def use_fallback(self, key: str) -> list[dict]:
-        """Return the curated fallback rows for this source and taint the run.
-
-        Callers use this when the live scrape produced nothing relevant. The
-        rows come from fallbacks.py (single hand-maintained catalogue) and the
-        run will be marked failed by run()'s FallbackOnlyError path.
-        """
-        from .fallbacks import all_fallbacks
-        self._used_fallback = True
-        logger.info(f"{self.source.name}: live scrape empty — using curated fallback '{key}'")
-        return all_fallbacks()[key]
 
     def filter_relevant(self, data: list[dict]) -> list[dict]:
         kept = []
@@ -239,7 +219,7 @@ class BaseScraper:
                 normalized = self.normalize_scholarship(item)
                 slug = self.generate_slug(normalized['name'], normalized['provider'])
                 defaults = {
-                    'origin': 'curated' if self._used_fallback else 'scraped',
+                    'origin': 'scraped',
                     'source_url': normalized['source_url'],
                     'level_scope': normalized['level_scope'],
                     'name': normalized['name'],
@@ -292,31 +272,23 @@ class BaseScraper:
         self.run_record = ScrapeRun.objects.create(source=self.source, status='running')
         try:
             raw = self.scrape()
-            # The relevance gate exists to catch junk parsed out of HTML. Curated
-            # fallback entries are hand-written and trusted by construction — some
-            # have no keyword in the title ("Chevening-Ghana Undergraduate Link")
-            # and would be wrongly rejected.
-            data = raw if self._used_fallback else self.filter_relevant(raw)
+            # The relevance gate catches junk parsed out of HTML (consent
+            # banners, nav headings) that reaches this point looking like a
+            # result.
+            data = self.filter_relevant(raw)
             self.run_record.scholarships_found = len(data)
 
             if not data:
+                # Nothing confirmed against the live site. Write nothing: an
+                # empty scrape must never be papered over with invented rows.
                 raise NoRelevantResultsError(
                     f"Scraped {len(raw)} item(s) but none looked like a scholarship. "
                     f"Selectors for this source are likely stale."
                 )
 
-            # Save before the fallback check so curated rows still land in the DB,
-            # flagged as unverified.
             created, updated = self.save_scholarships(data)
             self.run_record.scholarships_created = created
             self.run_record.scholarships_updated = updated
-
-            if self._used_fallback:
-                raise FallbackOnlyError(
-                    f"Live scrape returned nothing; served {len(data)} curated "
-                    f"fallback row(s) instead. Their amounts and deadlines are not "
-                    f"confirmed against the live site."
-                )
 
             self.run_record.status = 'success'
             self.circuit_breaker.record_success(source_id)
@@ -335,8 +307,8 @@ class BaseScraper:
             self.run_record.save()
             self.source.last_scraped = timezone.now()
             self.source.save(update_fields=['last_scraped'])
-            # Scholarship rows may have changed (even a fallback run saves
-            # curated rows), so stored matches are stale until recomputed.
+            # Scholarship rows may have changed, so stored matches are stale
+            # until recomputed.
             self._refresh_matches()
 
     def _refresh_matches(self):

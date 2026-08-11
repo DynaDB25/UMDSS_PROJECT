@@ -65,7 +65,26 @@ class StudentProfile(models.Model):
         return f"{self.user.get_full_name()} ({self.student_id})"
 
 
+class ScholarshipQuerySet(models.QuerySet):
+    def verifiable(self):
+        """Rows a student is allowed to see: scraped from a live page we can
+        link back to.
+
+        This is the authenticity gate. It excludes demo fixtures
+        (origin='seeded') and unverified curated fallbacks (origin='curated'),
+        and any row missing the source_url a student would use to confirm it at
+        the provider. Everything the app surfaces — the catalogue and the
+        matches — is filtered through here, so nothing invented or unsourced can
+        reach a student even if such a row exists in the table.
+        """
+        return self.filter(origin='scraped').exclude(source_url='')
+
+
 class Scholarship(models.Model):
+    # Custom manager keeps `Scholarship.objects.all()` working everywhere while
+    # adding `.verifiable()` for the app-facing surfaces.
+    objects = ScholarshipQuerySet.as_manager()
+
     PROVIDER_TYPES = [
         ('Government', 'Government'),
         ('Corporate', 'Corporate'),

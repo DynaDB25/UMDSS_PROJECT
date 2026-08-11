@@ -198,7 +198,10 @@ class GenericScraper(BaseScraper):
                 break
 
         if not items:
-            return self.use_fallback(fallback_key)
+            # Nothing relevant on the live page. Return empty rather than
+            # substituting invented data — run() records the empty result as a
+            # failure and no unverified row reaches the catalogue.
+            return []
         return self._follow_details(session, items)
 
     def _follow_details(self, session, items: list[dict]) -> list[dict]:

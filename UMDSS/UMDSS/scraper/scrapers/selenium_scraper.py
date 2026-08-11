@@ -148,7 +148,8 @@ class SeleniumScraper(BaseScraper):
                 break
 
         if not items:
-            return self.use_fallback(fallback_key)
+            # No relevant result; return empty rather than inventing one.
+            return []
         return self._follow_details(driver, items)
 
     def _follow_details(self, driver, items: list[dict]) -> list[dict]:

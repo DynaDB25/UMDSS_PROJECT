@@ -163,7 +163,8 @@ class PlaywrightScraper(BaseScraper):
                 )
                 if item:
                     return [item]
-            return self.use_fallback(fallback_key)
+            # No relevant result; return empty rather than inventing one.
+            return []
         finally:
             await browser.close()
             await self._pw.stop()

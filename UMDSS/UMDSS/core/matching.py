@@ -305,7 +305,10 @@ def regenerate_matches_for_user(user):
     except StudentProfile.DoesNotExist:
         return None
 
-    scholarships = list(Scholarship.objects.all())
+    # Only verifiable rows are matched, so a student is never scored against a
+    # demo fixture or an unverified fallback. Any MatchResult left over from a
+    # row that is no longer verifiable is pruned by the stale-cleanup below.
+    scholarships = list(Scholarship.objects.verifiable())
 
     # This runs inside the profile save, so it has to be a handful of queries
     # rather than a handful per scholarship. update_or_create in a loop cost

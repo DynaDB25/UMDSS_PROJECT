@@ -103,7 +103,11 @@ class ChangePasswordView(APIView):
 # ── Scholarships ──────────────────────────────────────
 
 class ScholarshipViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Scholarship.objects.all()
+    # Only live-scraped, source-linked rows are ever served. Demo fixtures and
+    # unverified curated fallbacks are filtered out here regardless of what is
+    # in the table, so the app can never show a scholarship a student cannot
+    # trace back to the provider that published it.
+    queryset = Scholarship.objects.verifiable()
     serializer_class = ScholarshipSerializer
     permission_classes = [permissions.AllowAny]
     lookup_field = 'slug'
@@ -241,9 +245,14 @@ class MatchListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        # Mirror the catalogue's provenance gate: never surface a match for a
+        # scholarship the app would not otherwise show. This keeps the two views
+        # consistent even in the window between deploying this code and purging
+        # the old seeded/curated rows from the database.
         return MatchResult.objects.filter(
-            student=self.request.user
-        ).select_related('scholarship')
+            student=self.request.user,
+            scholarship__origin='scraped',
+        ).exclude(scholarship__source_url='').select_related('scholarship')
 
 
 # ── Applications ──────────────────────────────────────
