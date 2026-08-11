@@ -37,6 +37,12 @@ export const listItem: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.28, ease: EASE } },
 }
 
+/** A node, dot or badge that scales in. Used by steppers and status markers. */
+export const popIn: Variants = {
+  hidden: { opacity: 0, scale: 0.5 },
+  show: { opacity: 1, scale: 1, transition: { duration: DUR.base, ease: EASE } },
+}
+
 /** Standard props for a section that animates once when scrolled into view. */
 export const inView = {
   initial: 'hidden' as const,

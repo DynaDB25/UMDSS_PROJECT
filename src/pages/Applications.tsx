@@ -15,6 +15,7 @@ import {
   Tabs,
 } from '../components/ui'
 import { ScholarshipLogo } from '../components/ScholarshipLogo'
+import { ApplicationJourney } from '../components/ApplicationJourney'
 import { PageListSkeleton } from '../components/skeletons'
 import { cn } from '../lib/cn'
 import type { ApplicationStatus } from '../data/types'
@@ -162,14 +163,14 @@ export default function Applications() {
                           {/* Timeline. Guarded: an application with no steps
                               recorded would otherwise render a bare heading
                               over nothing at all. */}
-                          <div className="lg:col-span-2">
-                            <h3 className="t-overline text-ink-muted">Application timeline</h3>
-                            {(a.timeline || []).length === 0 ? (
-                              <p className="t-sm mt-3 text-ink-muted">
-                                No steps recorded yet. They appear here as this application moves
-                                through the funder&apos;s process.
-                              </p>
-                            ) : (
+                          <div className="lg:col-span-2 space-y-7">
+                            <div>
+                              <h3 className="t-overline text-ink-muted">Progress</h3>
+                              <ApplicationJourney status={a.status} className="mt-4" />
+                            </div>
+                            {(a.timeline || []).length > 0 && (
+                            <div>
+                            <h3 className="t-overline text-ink-muted">Recorded steps</h3>
                             <ol className="mt-4 ml-[9px] space-y-5 border-l border-rule-strong pl-6">
                               {(a.timeline || []).map((t: any) => (
                                 <li key={t.label} className="relative">
@@ -196,6 +197,7 @@ export default function Applications() {
                                 </li>
                               ))}
                             </ol>
+                            </div>
                             )}
                           </div>
 
