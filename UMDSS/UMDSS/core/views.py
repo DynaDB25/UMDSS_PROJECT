@@ -613,16 +613,35 @@ import logging
 import re as _re
 from django.http import StreamingHttpResponse
 
-# Overridable so the streaming path can be exercised against a local stand-in,
-# or pointed at another OpenAI-compatible provider, without a code change.
+# The assistant uses Gemini as the primary provider (it does the real work) and
+# falls back to Groq automatically if Gemini is unavailable, so a Gemini outage,
+# bad key or rate limit never takes the assistant down. _order() returns the
+# providers to try, in priority order, including only those whose key is set.
+# AI_PROVIDER can pin a single provider (no fallback) when set to a valid name.
+def _order():
+    keys = {
+        'gemini': bool(os.environ.get('GEMINI_API_KEY')),
+        'groq': bool(os.environ.get('GROQ_API_KEY')),
+    }
+    explicit = os.environ.get('AI_PROVIDER', '').strip().lower()
+    if explicit in ('gemini', 'groq'):
+        return [explicit] if keys[explicit] else []
+    return [p for p in ('gemini', 'groq') if keys[p]]
+
+
+# Groq (OpenAI-compatible chat completions). Overridable so we can point at a
+# local stand-in or swap models without a code change.
 GROQ_URL = os.environ.get(
     'GROQ_BASE_URL', 'https://api.groq.com/openai/v1/chat/completions'
 )
-
-# Groq's flagship open-weight reasoning model (Kimi K2 and Llama 4 Scout were
-# deprecated in favour of this in 2026). Overridable so we can swap models
-# without a code change.
 DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b'
+
+# Gemini (Google Generative Language REST API). gemini-2.5-flash is the
+# cost/quality sweet spot for a chatbot; override with GEMINI_MODEL.
+GEMINI_BASE = os.environ.get(
+    'GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'
+)
+DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash'
 
 ASSISTANT_SYSTEM = (
     "You are the ScholarCircle Decision Bot. Think of yourself as a sharp, warm Ghanaian mentor who "
@@ -789,23 +808,17 @@ def _no_em_dashes(text):
     return text.replace('\u2014', '-').replace('\u2013', '-')
 
 
-def _build_assistant_payload(request):
-    """Validate the request and assemble the Groq payload.
+def _assistant_conversation(request):
+    """Validate the request and build the provider-neutral (system, history).
 
-    Returns (payload, None) on success or (None, Response) on failure, so both
-    the buffered and streaming endpoints share exactly one set of rules.
+    Returns (system, history, None) on success or (None, None, Response) on
+    failure, so the buffered and streaming endpoints share one set of rules.
+    History is a list of {'role': 'user'|'assistant', 'content': str}.
     """
-    api_key = os.environ.get('GROQ_API_KEY')
-    if not api_key:
-        return None, Response(
-            {'detail': "The assistant isn't switched on yet, the server needs a GROQ_API_KEY."},
-            status=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
-
     raw = request.data.get('messages', [])
     if not isinstance(raw, list) or not raw:
-        return None, Response({'detail': 'messages must be a non-empty list.'},
-                              status=status.HTTP_400_BAD_REQUEST)
+        return None, None, Response({'detail': 'messages must be a non-empty list.'},
+                                    status=status.HTTP_400_BAD_REQUEST)
 
     # Keep only well-formed, recent turns to bound token usage.
     history = []
@@ -818,8 +831,8 @@ def _build_assistant_payload(request):
             history.append({'role': role, 'content': content[:4000]})
 
     if not history or history[-1]['role'] != 'user':
-        return None, Response({'detail': 'The last message must come from the user.'},
-                              status=status.HTTP_400_BAD_REQUEST)
+        return None, None, Response({'detail': 'The last message must come from the user.'},
+                                    status=status.HTTP_400_BAD_REQUEST)
 
     system = ASSISTANT_SYSTEM + "\n\nSTUDENT DATA:\n" + _assistant_context(request.user)
 
@@ -830,57 +843,250 @@ def _build_assistant_payload(request):
         if target:
             system += f"\nThe student is being interviewed for: {target[:200]}.\n"
 
+    return system, history, None
+
+
+def _sse(obj):
+    import json as _json
+    return f"data: {_json.dumps(obj)}\n\n"
+
+
+def _sse_response(generator):
+    response = StreamingHttpResponse(generator, content_type='text/event-stream')
+    # Keep proxies and the dev server from buffering the stream into one blob.
+    response['Cache-Control'] = 'no-cache, no-transform'
+    response['X-Accel-Buffering'] = 'no'
+    return response
+
+
+class _ProviderError(Exception):
+    """A provider call failed in a way that should trigger fallback."""
+
+
+# ── Groq provider (OpenAI-compatible) ──
+
+def _groq_payload(system, history, stream=False):
     payload = {
         'model': os.environ.get('GROQ_MODEL', DEFAULT_GROQ_MODEL),
         'messages': [{'role': 'system', 'content': system}] + history,
-        # Slightly warmer than default so the voice doesn't flatten into a
-        # report, which was the complaint about the old answers.
+        # Slightly warmer than default so the voice doesn't flatten into a report.
         'temperature': 0.75,
         'presence_penalty': 0.3,
         # Roomy enough for a full essay or motivation letter without truncation.
         'max_tokens': 4096,
     }
-    return payload, None
+    if stream:
+        payload['stream'] = True
+    return payload
+
+
+def _groq_reply(system, history):
+    import requests as http
+    api_key = os.environ.get('GROQ_API_KEY')
+    if not api_key:
+        raise _ProviderError('missing GROQ_API_KEY')
+    try:
+        resp = http.post(
+            GROQ_URL,
+            headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+            json=_groq_payload(system, history), timeout=60,
+        )
+    except http.RequestException as exc:
+        raise _ProviderError(f'unreachable: {exc}')
+    if resp.status_code != 200:
+        safe = resp.text[:300].encode('ascii', 'replace').decode('ascii')
+        raise _ProviderError(f'HTTP {resp.status_code}: {safe}')
+    data = resp.json()
+    return data.get('choices', [{}])[0].get('message', {}).get('content') or ''
+
+
+def _groq_deltas(system, history):
+    import json as _json
+    import requests as http
+    api_key = os.environ.get('GROQ_API_KEY')
+    if not api_key:
+        raise _ProviderError('missing GROQ_API_KEY')
+    try:
+        resp = http.post(
+            GROQ_URL,
+            headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+            json=_groq_payload(system, history, stream=True), timeout=120, stream=True,
+        )
+    except http.RequestException as exc:
+        raise _ProviderError(f'unreachable: {exc}')
+    with resp:
+        if resp.status_code != 200:
+            safe = resp.text[:300].encode('ascii', 'replace').decode('ascii')
+            raise _ProviderError(f'HTTP {resp.status_code}: {safe}')
+        try:
+            for line in resp.iter_lines(decode_unicode=True):
+                if not line or not line.startswith('data:'):
+                    continue
+                body = line[5:].strip()
+                if body == '[DONE]':
+                    break
+                try:
+                    chunk = _json.loads(body)
+                except ValueError:
+                    continue
+                delta = ((chunk.get('choices') or [{}])[0].get('delta') or {}).get('content')
+                if delta:
+                    yield delta
+        except http.RequestException as exc:
+            raise _ProviderError(f'stream dropped: {exc}')
+
+
+# ── Gemini provider (Google Generative Language REST) ──
+
+def _gemini_request(system, history):
+    """Translate the neutral (system, history) into Gemini's request body.
+
+    Gemini uses the 'model' role for the assistant and carries the system prompt
+    in a dedicated system_instruction field. Thinking is switched off: for a
+    chatbot it only adds latency and bills as output tokens for no real gain.
+    """
+    contents = [
+        {'role': 'model' if m['role'] == 'assistant' else 'user',
+         'parts': [{'text': m['content']}]}
+        for m in history
+    ]
+    return {
+        'system_instruction': {'parts': [{'text': system}]},
+        'contents': contents,
+        'generationConfig': {
+            'temperature': 0.75,
+            'maxOutputTokens': 4096,
+            'thinkingConfig': {'thinkingBudget': 0},
+        },
+    }
+
+
+def _gemini_url(kind):
+    """kind is 'generateContent' or 'streamGenerateContent'."""
+    model = os.environ.get('GEMINI_MODEL', DEFAULT_GEMINI_MODEL)
+    return f"{GEMINI_BASE}/models/{model}:{kind}"
+
+
+def _gemini_text(payload):
+    """Pull the text out of a Gemini response (full body or one stream chunk)."""
+    try:
+        parts = payload['candidates'][0]['content']['parts']
+        return ''.join(p.get('text', '') for p in parts)
+    except (KeyError, IndexError, TypeError):
+        return ''
+
+
+def _gemini_reply(system, history):
+    import requests as http
+    api_key = os.environ.get('GEMINI_API_KEY')
+    if not api_key:
+        raise _ProviderError('missing GEMINI_API_KEY')
+    try:
+        resp = http.post(
+            _gemini_url('generateContent'),
+            headers={'Content-Type': 'application/json', 'x-goog-api-key': api_key},
+            json=_gemini_request(system, history), timeout=60,
+        )
+    except http.RequestException as exc:
+        raise _ProviderError(f'unreachable: {exc}')
+    if resp.status_code != 200:
+        safe = resp.text[:300].encode('ascii', 'replace').decode('ascii')
+        raise _ProviderError(f'HTTP {resp.status_code}: {safe}')
+    return _gemini_text(resp.json())
+
+
+def _gemini_deltas(system, history):
+    import json as _json
+    import requests as http
+    api_key = os.environ.get('GEMINI_API_KEY')
+    if not api_key:
+        raise _ProviderError('missing GEMINI_API_KEY')
+    try:
+        resp = http.post(
+            _gemini_url('streamGenerateContent') + '?alt=sse',
+            headers={'Content-Type': 'application/json', 'x-goog-api-key': api_key},
+            json=_gemini_request(system, history), timeout=120, stream=True,
+        )
+    except http.RequestException as exc:
+        raise _ProviderError(f'unreachable: {exc}')
+    with resp:
+        if resp.status_code != 200:
+            safe = resp.text[:300].encode('ascii', 'replace').decode('ascii')
+            raise _ProviderError(f'HTTP {resp.status_code}: {safe}')
+        try:
+            for line in resp.iter_lines(decode_unicode=True):
+                if not line or not line.startswith('data:'):
+                    continue
+                body = line[5:].strip()
+                if not body:
+                    continue
+                try:
+                    chunk = _json.loads(body)
+                except ValueError:
+                    continue
+                text = _gemini_text(chunk)
+                if text:
+                    yield text
+        except http.RequestException as exc:
+            raise _ProviderError(f'stream dropped: {exc}')
+
+
+# ── Orchestration: primary provider first, then fallback ──
+
+_REPLY_FNS = {'gemini': _gemini_reply, 'groq': _groq_reply}
+_DELTA_FNS = {'gemini': _gemini_deltas, 'groq': _groq_deltas}
+
+
+def _reply_with_fallback(system, history):
+    """Try each configured provider in priority order; return the first reply."""
+    errors = []
+    for prov in _order():
+        try:
+            return _REPLY_FNS[prov](system, history)
+        except _ProviderError as exc:
+            errors.append(f'{prov}: {exc}')
+            logging.getLogger('core').warning('assistant %s failed, falling back: %s', prov, exc)
+    raise _ProviderError('; '.join(errors) or 'no provider configured')
+
+
+def _deltas_with_fallback(system, history):
+    """Yield raw text deltas, falling back to the next provider only when the
+    current one fails before producing any text (a mid-stream drop cannot be
+    recovered without duplicating what the student already sees)."""
+    order = _order()
+    if not order:
+        raise _ProviderError('no provider configured')
+    for i, prov in enumerate(order):
+        produced = False
+        try:
+            for delta in _DELTA_FNS[prov](system, history):
+                produced = True
+                yield delta
+            return
+        except _ProviderError as exc:
+            logging.getLogger('core').warning('assistant %s stream failed: %s', prov, exc)
+            if produced or i == len(order) - 1:
+                raise
 
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def assistant_chat(request):
-    """POST /api/assistant/chat/ → a grounded LLM reply via Groq.
+    """POST /api/assistant/chat/ → a grounded LLM reply.
 
     Body: {"messages": [{"role": "user"|"assistant", "content": str}, ...]}
-    The API key stays server-side (GROQ_API_KEY env); the client never sees it.
-
-    Kept as the non-streaming fallback for clients that cannot read a stream.
+    Gemini is the primary provider with Groq as an automatic fallback (see
+    _order). Keys stay server-side; the client never sees them. Kept as the
+    non-streaming fallback for clients that cannot read a stream.
     """
-    import requests as http
-
-    api_key = os.environ.get('GROQ_API_KEY')
-    payload, error = _build_assistant_payload(request)
+    system, history, error = _assistant_conversation(request)
     if error:
         return error
-
     try:
-        resp = http.post(
-            GROQ_URL,
-            headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
-            json=payload,
-            timeout=60,
-        )
-    except http.RequestException:
-        return Response({'detail': 'The assistant is unreachable right now. Please try again.'},
-                        status=status.HTTP_502_BAD_GATEWAY)
-
-    if resp.status_code != 200:
-        # Log safely (Windows consoles are cp1252, avoid unicode crashes) and
-        # surface a friendly message rather than leaking provider internals.
-        safe = resp.text[:500].encode('ascii', 'replace').decode('ascii')
-        logging.getLogger('core').error('Groq error %s: %s', resp.status_code, safe)
+        reply = _reply_with_fallback(system, history).strip()
+    except _ProviderError:
         return Response({'detail': 'The assistant had trouble responding. Please try again in a moment.'},
                         status=status.HTTP_502_BAD_GATEWAY)
-
-    data = resp.json()
-    reply = (data.get('choices', [{}])[0].get('message', {}).get('content') or '').strip()
     if not reply:
         reply = "I'm not sure how to answer that yet, could you give me a little more detail?"
     return Response({'reply': _no_em_dashes(reply)})
@@ -895,86 +1101,51 @@ _STREAM_HOLDBACK = 4
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def assistant_stream(request):
-    """POST /api/assistant/stream/ → the same grounded reply, streamed.
-
-    Emits Server-Sent Events so the answer appears word by word instead of
-    landing as a wall of text after a long pause:
+    """POST /api/assistant/stream/ → the same grounded reply, streamed as SSE:
         data: {"delta": "..."}   incremental text
         data: {"done": true}     finished
         data: {"error": "..."}   something went wrong mid-stream
-    """
-    import json as _json
-    import requests as http
 
-    api_key = os.environ.get('GROQ_API_KEY')
-    payload, error = _build_assistant_payload(request)
+    Gemini is tried first and falls back to Groq if Gemini fails before any
+    text has reached the student.
+    """
+    system, history, error = _assistant_conversation(request)
     if error:
         return error
-
-    payload['stream'] = True
-
-    def sse(obj):
-        return f"data: {_json.dumps(obj)}\n\n"
 
     def event_stream():
         raw_text = ''
         sent = 0
         try:
-            with http.post(
-                GROQ_URL,
-                headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
-                json=payload,
-                timeout=120,
-                stream=True,
-            ) as resp:
-                if resp.status_code != 200:
-                    safe = resp.text[:500].encode('ascii', 'replace').decode('ascii')
-                    logging.getLogger('core').error('Groq stream error %s: %s', resp.status_code, safe)
-                    yield sse({'error': 'The assistant had trouble responding. Please try again in a moment.'})
-                    return
-
-                for line in resp.iter_lines(decode_unicode=True):
-                    if not line or not line.startswith('data:'):
-                        continue
-                    body = line[5:].strip()
-                    if body == '[DONE]':
-                        break
-                    try:
-                        chunk = _json.loads(body)
-                    except ValueError:
-                        continue
-                    choices = chunk.get('choices') or [{}]
-                    delta = (choices[0].get('delta') or {}).get('content')
-                    if not delta:
-                        continue
-
-                    raw_text += delta
-                    cleaned = _no_em_dashes(raw_text)
-                    safe_len = max(0, len(cleaned) - _STREAM_HOLDBACK)
-                    if safe_len > sent:
-                        yield sse({'delta': cleaned[sent:safe_len]})
-                        sent = safe_len
+            for delta in _deltas_with_fallback(system, history):
+                raw_text += delta
+                cleaned = _no_em_dashes(raw_text)
+                safe_len = max(0, len(cleaned) - _STREAM_HOLDBACK)
+                if safe_len > sent:
+                    yield _sse({'delta': cleaned[sent:safe_len]})
+                    sent = safe_len
 
             # Flush whatever the holdback was still sitting on.
             cleaned = _no_em_dashes(raw_text)
             if len(cleaned) > sent:
-                yield sse({'delta': cleaned[sent:]})
+                yield _sse({'delta': cleaned[sent:]})
 
             if not raw_text.strip():
-                yield sse({'delta': "I'm not sure how to answer that yet, could you give me a little more detail?"})
+                yield _sse({'delta': "I'm not sure how to answer that yet, could you give me a little more detail?"})
 
-            yield sse({'done': True})
-        except http.RequestException:
-            yield sse({'error': 'The assistant is unreachable right now. Please try again.'})
+            yield _sse({'done': True})
+        except _ProviderError:
+            # If some text already reached the student, close cleanly rather than
+            # tacking an error onto a half-written answer.
+            if raw_text.strip():
+                yield _sse({'done': True})
+            else:
+                yield _sse({'error': 'The assistant had trouble responding. Please try again in a moment.'})
         except Exception:  # noqa: BLE001 - a dead stream must not 500 the page
             logging.getLogger('core').exception('Assistant stream failed')
-            yield sse({'error': 'The assistant stopped unexpectedly. Please try again.'})
+            yield _sse({'error': 'The assistant stopped unexpectedly. Please try again.'})
 
-    response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
-    # Keep proxies and the dev server from buffering the stream into one blob.
-    response['Cache-Control'] = 'no-cache, no-transform'
-    response['X-Accel-Buffering'] = 'no'
-    return response
+    return _sse_response(event_stream())
 
 
 # ── Admin ─────────────────────────────────────────────
