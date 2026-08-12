@@ -607,7 +607,59 @@ def mark_all_read(request):
     return Response({'detail': 'All notifications marked as read.'})
 
 
-# ── AI Assistant (Groq) ───────────────────────────────
+# ── Phone verification ────────────────────────────────
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def phone_otp_request(request):
+    """POST /api/auth/phone/otp/ → text (or email) a one-time code.
+
+    Body: {"phone": "0244123456"}, or omit it to use the number already on the
+    profile. The code itself is never returned, only where it was sent.
+    """
+    from .otp import OtpError, request_code
+
+    profile = getattr(request.user, 'profile', None)
+    phone = (request.data.get('phone') or getattr(profile, 'phone', '') or '').strip()
+
+    try:
+        info = request_code(request.user, phone)
+    except OtpError as exc:
+        body = {'detail': exc.detail}
+        if exc.retry_after:
+            body['retryAfter'] = exc.retry_after
+        return Response(
+            body,
+            status=status.HTTP_429_TOO_MANY_REQUESTS if exc.retry_after
+            else status.HTTP_400_BAD_REQUEST,
+        )
+
+    return Response({
+        'channel': info['channel'],
+        'phone': info['phone'],
+        'expiresIn': info['expires_in'],
+        'resendIn': info['resend_in'],
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def phone_otp_verify(request):
+    """POST /api/auth/phone/verify/ → confirm the code and mark the number verified.
+
+    Body: {"code": "123456"}
+    """
+    from .otp import OtpError, verify_code
+
+    try:
+        record = verify_code(request.user, request.data.get('code'))
+    except OtpError as exc:
+        return Response({'detail': exc.detail}, status=status.HTTP_400_BAD_REQUEST)
+
+    return Response({'verified': True, 'phone': record.phone})
+
+
+# ── AI Assistant ──────────────────────────────────────
 
 import logging
 import re as _re

@@ -17,6 +17,10 @@ urlpatterns = [
     path('auth/password/', views.ChangePasswordView.as_view(), name='change-password'),
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
 
+    # Phone verification by one-time code (SMS, falling back to email).
+    path('auth/phone/otp/', views.phone_otp_request, name='phone-otp-request'),
+    path('auth/phone/verify/', views.phone_otp_verify, name='phone-otp-verify'),
+
     # Matches (flat list for the logged-in user)
     path('matches/', views.MatchListView.as_view(), name='matches'),
 

@@ -27,6 +27,11 @@ class StudentProfile(models.Model):
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     phone = models.CharField(max_length=20, blank=True)
+    # Set once a one-time code sent to this number has been entered back. An
+    # unverified number is still texted: students type their own number at
+    # registration and most are correct, so treating "unverified" as "do not
+    # send" would silently cut off the majority to guard against a typo.
+    phone_verified = models.BooleanField(default=False)
     # Registration states that deadline reminders arrive by SMS, so this starts
     # on. Turning it off stops every text; the in-app notification is still
     # written, so nobody loses the alert itself by opting out of the channel.
@@ -387,3 +392,40 @@ class OutboundMessage(models.Model):
 
     def __str__(self):
         return f'{self.channel} to {self.recipient or "(none)"} [{self.status}]'
+
+
+class PhoneVerification(models.Model):
+    """A one-time code proving the student controls a phone number.
+
+    Only the hash of the code is stored, so a database leak does not hand an
+    attacker a live code, and the row keeps its own attempt counter: guessing is
+    limited per code rather than per request, which is what makes six digits
+    safe enough to type on a phone.
+
+    Kept as its own table rather than columns on the profile so the history is
+    auditable and a resend never overwrites the evidence of the previous send.
+    """
+
+    CHANNELS = [('SMS', 'SMS'), ('Email', 'Email')]
+
+    student = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='phone_verifications'
+    )
+    # E.164, the same normalised form the SMS layer sends to.
+    phone = models.CharField(max_length=20)
+    code_hash = models.CharField(max_length=128)
+    # Where the code actually went. SMS can fall back to email while an
+    # alphanumeric sender ID is still awaiting network approval.
+    channel = models.CharField(max_length=10, choices=CHANNELS, default='SMS')
+    attempts = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['student', '-created_at'])]
+
+    def __str__(self):
+        state = 'used' if self.consumed_at else 'pending'
+        return f'{self.phone} via {self.channel} [{state}]'

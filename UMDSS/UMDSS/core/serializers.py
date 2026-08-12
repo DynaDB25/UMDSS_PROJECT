@@ -33,6 +33,9 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = StudentProfile
         exclude = ['id', 'user']
+        # Only the one-time code flow may set this. Left writable, a client
+        # could simply PUT phone_verified=true and skip verification entirely.
+        read_only_fields = ['phone_verified']
 
 
 class UserSerializer(serializers.ModelSerializer):
