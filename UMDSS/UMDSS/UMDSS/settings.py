@@ -243,12 +243,19 @@ VAULT_ENCRYPTION_KEY = os.environ.get(
 # SMS
 # ──────────────────────────────────────────────────────
 
-# Which gateway to use: 'console' logs the message and sends nothing, 'arkesel'
-# is live. Console is the default deliberately, so that a fresh checkout or a
-# CI run cannot spend credits no matter what code it runs.
-SMS_BACKEND = os.environ.get('SMS_BACKEND', 'console')
-
 ARKESEL_API_KEY = os.environ.get('ARKESEL_API_KEY', '')
+
+# Which gateway to use: 'console' logs the message and sends nothing, 'arkesel'
+# is live. A checkout with no credentials still defaults to console, so a fresh
+# clone or a CI run cannot spend credits no matter what code it runs. But once a
+# real ARKESEL_API_KEY is present the intent is obviously to send, so we switch
+# to the live gateway rather than silently logging to console: console sends are
+# recorded as 'Sent', which makes the delivery log look healthy while nothing
+# ever reaches a phone. Set SMS_BACKEND explicitly to override either way, or
+# SMS_ENABLED=false to stop sending while keeping the key in place.
+SMS_BACKEND = os.environ.get(
+    'SMS_BACKEND', 'arkesel' if ARKESEL_API_KEY else 'console'
+)
 # The name recipients see. An alphanumeric sender ID has to be registered and
 # approved by the mobile networks themselves before they will carry it, so this
 # must match what was approved on the Arkesel dashboard; an unregistered one is

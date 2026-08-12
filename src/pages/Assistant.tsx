@@ -173,6 +173,99 @@ function MessageBody({ text }: { text: string }) {
   )
 }
 
+// Typing pace. The floor is a comfortable reading speed; the backlog term means
+// a fast reply catches up instead of crawling behind an artificial limit.
+const BASE_CPS = 190
+const BACKLOG_GAIN = 5.5
+
+/**
+ * Releases streamed text at a steady, readable pace.
+ *
+ * Providers chunk very differently: Groq emits a token at a time, Gemini often a
+ * whole sentence or paragraph at once. Appending each chunk the instant it lands
+ * makes the reply lurch forward in blocks, which reads as broken. This queues
+ * whatever arrives and releases it on the animation frame, so the answer always
+ * types out smoothly no matter which model produced it.
+ */
+function useTypewriter(append: (chunk: string) => void) {
+  const queue = useRef('')
+  const frame = useRef<number | null>(null)
+  const last = useRef(0)
+  const settled = useRef<(() => void) | null>(null)
+
+  const stop = useCallback(() => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current)
+    frame.current = null
+  }, [])
+
+  const tick = useCallback(() => {
+    const now = performance.now()
+    // A backgrounded tab stops firing frames; cap the gap so it does not dump
+    // the whole backlog in one jump when the student comes back.
+    const elapsed = Math.min(now - last.current, 100)
+    last.current = now
+
+    const backlog = queue.current.length
+    if (backlog === 0) {
+      stop()
+      const done = settled.current
+      settled.current = null
+      done?.()
+      return
+    }
+
+    const take = Math.max(1, Math.round(((BASE_CPS + backlog * BACKLOG_GAIN) * elapsed) / 1000))
+    const chunk = queue.current.slice(0, take)
+    queue.current = queue.current.slice(chunk.length)
+    append(chunk)
+
+    frame.current = requestAnimationFrame(tick)
+  }, [append, stop])
+
+  const start = useCallback(() => {
+    stop()
+    queue.current = ''
+    settled.current = null
+  }, [stop])
+
+  const push = useCallback(
+    (text: string) => {
+      queue.current += text
+      if (frame.current === null) {
+        last.current = performance.now()
+        frame.current = requestAnimationFrame(tick)
+      }
+    },
+    [tick],
+  )
+
+  /** Resolves once everything queued has actually been shown. */
+  const drain = useCallback(
+    () =>
+      new Promise<void>((resolve) => {
+        if (queue.current.length === 0) {
+          resolve()
+          return
+        }
+        settled.current = resolve
+      }),
+    [],
+  )
+
+  /** Show whatever is left at once: the student stopped, or something failed. */
+  const flush = useCallback(() => {
+    stop()
+    const rest = queue.current
+    queue.current = ''
+    settled.current = null
+    if (rest) append(rest)
+  }, [append, stop])
+
+  useEffect(() => () => stop(), [stop])
+
+  return { start, push, drain, flush }
+}
+
 /** Caret that trails the text while a reply is still being written. */
 function StreamCaret() {
   return (
@@ -200,6 +293,20 @@ export default function Assistant() {
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+
+  // Which bot message the typewriter is currently filling in.
+  const streamTargetRef = useRef<string | null>(null)
+  const appendToStream = useCallback((chunk: string) => {
+    const id = streamTargetRef.current
+    if (!id) return
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, text: m.text + chunk } : m)))
+  }, [])
+  const {
+    start: startTyping,
+    push: pushTyping,
+    drain: drainTyping,
+    flush: flushTyping,
+  } = useTypewriter(appendToStream)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -237,6 +344,8 @@ export default function Assistant() {
       setIsStreaming(true)
       setStreamingId(botId)
       setMessages([...convo, { id: botId, role: 'bot', text: '' }])
+      streamTargetRef.current = botId
+      startTyping()
 
       const payload: ChatTurn[] = convo
         .filter((m) => m.text?.trim())
@@ -251,18 +360,18 @@ export default function Assistant() {
       try {
         await api.assistant.stream(
           payload,
-          (delta) => {
-            setMessages((prev) =>
-              prev.map((m) => (m.id === botId ? { ...m, text: m.text + delta } : m)),
-            )
-          },
+          (delta) => pushTyping(delta),
           {
             mode: activeInterview ? 'interview' : 'chat',
             scholarship: activeInterview ? target : undefined,
             signal: controller.signal,
           },
         )
+        // The network is done, but the typewriter may still be catching up.
+        await drainTyping()
       } catch (err: any) {
+        // Show whatever already arrived rather than losing it behind the queue.
+        flushTyping()
         // An aborted stream is the student pressing stop, not a failure.
         if (err?.name === 'AbortError') {
           setMessages((prev) =>
@@ -288,12 +397,13 @@ export default function Assistant() {
           )
         }
       } finally {
+        streamTargetRef.current = null
         setIsStreaming(false)
         setStreamingId(null)
         abortRef.current = null
       }
     },
-    [interview],
+    [interview, startTyping, pushTyping, drainTyping, flushTyping],
   )
 
   const sendMessage = (text: string) => {
