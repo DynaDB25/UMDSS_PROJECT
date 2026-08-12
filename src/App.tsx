@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate, useParams } from 'react-router-dom'
+import { MotionConfig } from 'framer-motion'
 import { AppLayout } from './components/AppLayout'
 import { RouteFallback } from './components/skeletons'
 import { useAuth } from './contexts/AuthContext'
@@ -44,6 +45,7 @@ function LegacyMatchRedirect() {
 
 export default function App() {
   return (
+    <MotionConfig reducedMotion="user">
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
@@ -81,5 +83,6 @@ export default function App() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </MotionConfig>
   )
 }

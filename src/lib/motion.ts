@@ -43,6 +43,16 @@ export const popIn: Variants = {
   show: { opacity: 1, scale: 1, transition: { duration: DUR.base, ease: EASE } },
 }
 
+/**
+ * Page-level entrance for routed views. Deliberately gentle (a short fade and
+ * small rise) so it layers under a page's own staggered content rather than
+ * fighting it, and so navigation feels alive without ever feeling sluggish.
+ */
+export const pageEnter: Variants = {
+  hidden: { opacity: 0, y: 8 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.32, ease: EASE } },
+}
+
 /** Standard props for a section that animates once when scrolled into view. */
 export const inView = {
   initial: 'hidden' as const,

@@ -19,9 +19,11 @@ import {
 import { useTheme } from '../contexts/ThemeContext'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../api/endpoints'
+import { motion } from 'framer-motion'
 import { Logo } from './Logo'
 import { Avatar } from './ui'
 import { cn } from '../lib/cn'
+import { pageEnter } from '../lib/motion'
 
 const nav = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -314,7 +316,9 @@ export function AppLayout() {
           key={location.pathname}
           className="mx-auto w-full max-w-content px-4 py-6 sm:px-6 lg:px-8 lg:py-10"
         >
-          <Outlet />
+          <motion.div variants={pageEnter} initial="hidden" animate="show">
+            <Outlet />
+          </motion.div>
         </main>
       </div>
     </div>
