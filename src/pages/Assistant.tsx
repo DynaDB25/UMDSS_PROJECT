@@ -81,17 +81,31 @@ function stripMarkers(text: string) {
   return text.replace(SCORE_RE, '').replace(/^\s*\n/, '')
 }
 
-// Render a single line with inline **bold** without pulling in a markdown lib.
+// Render a line with inline emphasis, and crucially, never let raw markdown
+// characters reach the screen. Models reach for **bold**, *italic* and
+// `code` even when told not to; showing those markers literally is exactly the
+// "looks like a machine wrote it" tell the student should never see. Paired
+// markers become styling; any stray marker that never closed is dropped.
 function renderInline(text: string) {
-  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    /^\*\*[^*]+\*\*$/.test(part) ? (
-      <strong key={i} className="font-bold text-ink">
-        {part.slice(2, -2)}
-      </strong>
-    ) : (
-      <span key={i}>{part}</span>
-    ),
-  )
+  return text
+    .split(/(\*\*[\s\S]+?\*\*|\*[^*\n]+?\*|`[^`\n]+?`)/g)
+    .map((part, i) => {
+      if (/^\*\*[\s\S]+\*\*$/.test(part))
+        return (
+          <strong key={i} className="font-semibold text-ink">
+            {part.slice(2, -2)}
+          </strong>
+        )
+      if (/^\*[^*\n]+\*$/.test(part))
+        return (
+          <em key={i} className="italic">
+            {part.slice(1, -1)}
+          </em>
+        )
+      if (/^`[^`\n]+`$/.test(part)) return <span key={i}>{part.slice(1, -1)}</span>
+      // Plain text: strip stray asterisks/backticks that never formed a pair.
+      return <span key={i}>{part.replace(/[*`]/g, '')}</span>
+    })
 }
 
 type Block =
