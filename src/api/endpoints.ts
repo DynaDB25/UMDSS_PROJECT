@@ -25,6 +25,16 @@ export const api = {
     updateMe: (data: any) => client.put('/auth/me/', data),
     changePassword: (data: { current_password: string; new_password: string }) =>
       client.post('/auth/password/', data),
+    // Text (or email, as fallback) a one-time code to the student's phone.
+    requestPhoneOtp: (phone?: string) =>
+      client.post('/auth/phone/otp/', phone ? { phone } : {}) as Promise<{
+        channel: 'SMS' | 'Email'
+        phone: string
+        expiresIn: number
+        resendIn: number
+      }>,
+    verifyPhoneOtp: (code: string) =>
+      client.post('/auth/phone/verify/', { code }) as Promise<{ verified: boolean; phone: string }>,
   },
   scholarships: {
     list: () => client.get('/scholarships/') as Promise<Scholarship[]>,

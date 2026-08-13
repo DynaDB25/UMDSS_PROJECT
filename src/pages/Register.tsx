@@ -1,11 +1,138 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { User, Mail, Phone, Lock, Eye, EyeOff, ArrowRight, Check } from 'lucide-react'
+import {
+  User, Mail, Phone, Lock, Eye, EyeOff, ArrowRight, Check, ShieldCheck, RefreshCw,
+} from 'lucide-react'
 import { AuthShell } from '../components/AuthShell'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../api/endpoints'
 import { cn } from '../lib/cn'
 import { Alert, Button, Checkbox, Field, Input } from '../components/ui'
+
+/**
+ * The one-time-code step shown straight after an account is created. The
+ * account already exists and the student is signed in by this point, so a
+ * failure to verify is never a dead end: they can resend, or skip and verify
+ * later from Settings. An unverified number still receives alerts, so skipping
+ * costs nothing today and simply leaves the number unconfirmed.
+ */
+function PhoneVerify({ onDone }: { onDone: () => void }) {
+  const [info, setInfo] = useState<{ channel: string; phone: string } | null>(null)
+  const [code, setCode] = useState('')
+  const [sending, setSending] = useState(true)
+  const [verifying, setVerifying] = useState(false)
+  const [error, setError] = useState('')
+  const [resendIn, setResendIn] = useState(0)
+  const sentOnce = useRef(false)
+
+  const send = useCallback(async () => {
+    setError('')
+    setSending(true)
+    try {
+      const res = await api.auth.requestPhoneOtp()
+      setInfo({ channel: res.channel, phone: res.phone })
+      setResendIn(res.resendIn || 60)
+    } catch (e: any) {
+      setError(e.message || 'We could not send a code right now. You can skip and verify later.')
+    } finally {
+      setSending(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (sentOnce.current) return
+    sentOnce.current = true
+    send()
+  }, [send])
+
+  useEffect(() => {
+    if (resendIn <= 0) return
+    const t = setInterval(() => setResendIn((s) => (s <= 1 ? 0 : s - 1)), 1000)
+    return () => clearInterval(t)
+  }, [resendIn])
+
+  const verify = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setVerifying(true)
+    try {
+      await api.auth.verifyPhoneOtp(code.trim())
+      onDone()
+    } catch (e: any) {
+      setError(e.message || 'That code did not work. Try again.')
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  return (
+    <div>
+      <div className="grid h-12 w-12 place-items-center rounded-full bg-accent-soft text-accent">
+        <ShieldCheck className="h-6 w-6" />
+      </div>
+      <h1 className="t-h1 mt-5 text-ink">Verify your phone</h1>
+      <p className="t-body mt-3 text-ink-muted">
+        {info
+          ? `We sent a 6 digit code by ${info.channel === 'Email' ? 'email' : 'SMS'} to ${info.phone}. Enter it below to confirm this is you.`
+          : 'Sending a 6 digit code to the number you entered.'}
+      </p>
+
+      {error && (
+        <Alert tone="danger" className="mt-6">
+          {error}
+        </Alert>
+      )}
+
+      <form className="mt-8 space-y-5" onSubmit={verify}>
+        <Field label="Verification code" htmlFor="otp-code" required>
+          <Input
+            id="otp-code"
+            name="code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            inputSize="lg"
+            maxLength={6}
+            placeholder="123456"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            className="tabular tracking-[0.4em]"
+          />
+        </Field>
+
+        <Button
+          type="submit"
+          variant="accent"
+          size="lg"
+          block
+          loading={verifying}
+          disabled={code.length !== 6}
+          iconRight={<ArrowRight className="h-4 w-4" />}
+        >
+          Verify and continue
+        </Button>
+      </form>
+
+      <div className="mt-6 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={send}
+          disabled={sending || resendIn > 0}
+          className="inline-flex items-center gap-2 text-sm font-semibold text-ink underline underline-offset-4 hover:text-accent disabled:cursor-not-allowed disabled:text-ink-faint disabled:no-underline"
+        >
+          <RefreshCw className={cn('h-3.5 w-3.5', sending && 'animate-spin')} />
+          {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend code'}
+        </button>
+        <button
+          type="button"
+          onClick={onDone}
+          className="text-sm font-medium text-ink-muted underline underline-offset-4 hover:text-ink"
+        >
+          Skip for now
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export default function Register() {
   const navigate = useNavigate()
@@ -14,6 +141,8 @@ export default function Register() {
   const [pwd, setPwd] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  // 'form' collects the details; 'verify' confirms the phone by one-time code.
+  const [step, setStep] = useState<'form' | 'verify'>('form')
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -36,7 +165,8 @@ export default function Register() {
         password: pwd,
       })
       login(res.tokens.access, res.tokens.refresh, res.user)
-      navigate('/onboarding')
+      // Signed in now; confirm the phone before onboarding rather than after.
+      setStep('verify')
     } catch (err: any) {
       setError(err.message || 'Failed to register account')
     } finally {
@@ -49,6 +179,14 @@ export default function Register() {
     { label: 'A number', ok: /\d/.test(pwd) },
     { label: 'A capital letter', ok: /[A-Z]/.test(pwd) },
   ]
+
+  if (step === 'verify') {
+    return (
+      <AuthShell>
+        <PhoneVerify onDone={() => navigate('/onboarding')} />
+      </AuthShell>
+    )
+  }
 
   return (
     <AuthShell>

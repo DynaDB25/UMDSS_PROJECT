@@ -688,12 +688,15 @@ GROQ_URL = os.environ.get(
 )
 DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b'
 
-# Gemini (Google Generative Language REST API). gemini-2.5-flash is the
-# cost/quality sweet spot for a chatbot; override with GEMINI_MODEL.
+# Gemini (Google Generative Language REST API). Use the rolling `-latest` alias
+# rather than a pinned version: Google retires specific versions for new API
+# users (gemini-2.5-flash now returns 404 for keys created after its cutoff),
+# and the alias always resolves to a current, free-tier flash model. Override
+# with GEMINI_MODEL if a specific one is ever needed.
 GEMINI_BASE = os.environ.get(
     'GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'
 )
-DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash'
+DEFAULT_GEMINI_MODEL = 'gemini-flash-latest'
 
 ASSISTANT_SYSTEM = (
     "You are the ScholarCircle Decision Bot. Think of yourself as a sharp, warm Ghanaian mentor who "
@@ -1017,8 +1020,12 @@ def _gemini_request(system, history):
     """Translate the neutral (system, history) into Gemini's request body.
 
     Gemini uses the 'model' role for the assistant and carries the system prompt
-    in a dedicated system_instruction field. Thinking is switched off: for a
-    chatbot it only adds latency and bills as output tokens for no real gain.
+    in a dedicated system_instruction field.
+
+    No thinkingConfig: the flash-latest alias rejects it (HTTP 400), and it
+    reasons internally by default. That internal reasoning counts against
+    maxOutputTokens, so the budget is set high enough that a full essay still
+    lands after the model has finished thinking, rather than truncating.
     """
     contents = [
         {'role': 'model' if m['role'] == 'assistant' else 'user',
@@ -1030,8 +1037,7 @@ def _gemini_request(system, history):
         'contents': contents,
         'generationConfig': {
             'temperature': 0.75,
-            'maxOutputTokens': 4096,
-            'thinkingConfig': {'thinkingBudget': 0},
+            'maxOutputTokens': 8192,
         },
     }
 
