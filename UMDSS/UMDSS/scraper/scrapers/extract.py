@@ -46,6 +46,27 @@ DEADLINE_CONTEXT_RE = re.compile(
 # How far after a deadline keyword a date may sit and still be "its" date.
 _DEADLINE_WINDOW = 180
 
+# A deadline keyword answered by one of these states there is no deadline. The
+# keyword must then anchor nothing: scholarships.gov.gh prints a summary header
+# reading "Deadline Not specified   Published June 03, 2026", and without this
+# the window sails past "Not specified" and adopts the publication date, which
+# is how a notice with no stated deadline acquired a precise looking one.
+_DEADLINE_NEGATED_RE = re.compile(
+    r'[\s:\u2013\u2014-]*(?:not\s+specified|not\s+stated|unspecified|'
+    r'not\s+available|not\s+applicable|none\b|n/?a\b|tbd\b|tba\b|tbc\b|'
+    r'to\s+be\s+(?:announced|confirmed|determined|advised)|'
+    r'rolling\b|ongoing\b|open\s+until\s+filled)',
+    re.I,
+)
+
+# A date introduced by one of these is when the notice was posted, never when
+# applications close. Checked on the text immediately before the date.
+_PUBLICATION_DATE_RE = re.compile(
+    r'(?:published|posted|updated|revised|uploaded|released|issued|'
+    r'last\s+modified)\s*(?:on|:)?\s*$',
+    re.I,
+)
+
 
 def _iter_dates(text):
     """Yield (position, date) for every recognisable date in the text."""
@@ -101,14 +122,27 @@ def find_deadline(text):
     future date on the page. A page with no dates yields None — the caller
     must NOT substitute a made-up "today + N days" value, that is exactly the
     fabrication this module exists to remove.
+
+    Two kinds of date are refused outright, because reading either one as a
+    deadline invents a fact the page never stated: the date a notice was
+    published, and any date sitting behind a deadline keyword that has already
+    been answered with "not specified".
     """
     if not text:
         return None
     today = datetime.date.today()
     sane = lambda d: today - datetime.timedelta(days=400) <= d <= today + datetime.timedelta(days=1200)
-    dates = [(pos, d) for pos, d in _iter_dates(text) if sane(d)]
+    dates = [
+        (pos, d) for pos, d in _iter_dates(text)
+        if sane(d) and not _PUBLICATION_DATE_RE.search(text[max(0, pos - 40):pos])
+    ]
 
-    keyword_spans = [m.end() for m in DEADLINE_CONTEXT_RE.finditer(text)]
+    keyword_spans, said_none = [], False
+    for m in DEADLINE_CONTEXT_RE.finditer(text):
+        if _DEADLINE_NEGATED_RE.match(text, m.end()):
+            said_none = True
+        else:
+            keyword_spans.append(m.end())
     near_keyword = [
         (pos, d) for pos, d in dates
         if any(0 <= pos - k <= _DEADLINE_WINDOW for k in keyword_spans)
@@ -131,6 +165,18 @@ def find_deadline(text):
                 if sane(d):
                     return d
 
+    if said_none:
+        # The page stated outright that no deadline is set. Every date left on
+        # it belongs to something else — a publication stamp, an intake table,
+        # one institution's admission window — and promoting one of those to
+        # "the deadline" contradicts what the page actually says. A PWASI
+        # notice earned an August deadline this way, lifted from a University
+        # of Ghana admission table further down the page.
+        return None
+
+    # Last resort: no keyword anywhere, so the earliest future date is the best
+    # available reading. Weaker than the branches above, which is why an
+    # explicit "not specified" outranks it.
     future = [d for _, d in dates if d >= today]
     if future:
         return min(future)

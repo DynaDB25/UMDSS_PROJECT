@@ -273,7 +273,10 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'scholarship_id is required.'},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            scholarship = Scholarship.objects.get(slug=slug)
+            # Same authenticity gate the catalogue uses. Without it a slug
+            # guessed or kept from an older build could start an application
+            # against a demo fixture, which the browse surfaces never show.
+            scholarship = Scholarship.objects.verifiable().get(slug=slug)
         except Scholarship.DoesNotExist:
             return Response({'detail': 'That scholarship no longer exists.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -612,10 +615,12 @@ def mark_all_read(request):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def phone_otp_request(request):
-    """POST /api/auth/phone/otp/ → text (or email) a one-time code.
+    """POST /api/auth/phone/otp/ → email (or text) a one-time code.
 
-    Body: {"phone": "0244123456"}, or omit it to use the number already on the
-    profile. The code itself is never returned, only where it was sent.
+    Body: {"phone": "0244123456", "channel": "sms"}. Both are optional: the
+    number falls back to the one already on the profile, and without a channel
+    the code goes by whichever one core.otp leads with. The code itself is
+    never returned, only the masked destination it was sent to.
     """
     from .otp import OtpError, request_code
 
@@ -623,7 +628,7 @@ def phone_otp_request(request):
     phone = (request.data.get('phone') or getattr(profile, 'phone', '') or '').strip()
 
     try:
-        info = request_code(request.user, phone)
+        info = request_code(request.user, phone, channel=request.data.get('channel'))
     except OtpError as exc:
         body = {'detail': exc.detail}
         if exc.retry_after:
@@ -636,7 +641,9 @@ def phone_otp_request(request):
 
     return Response({
         'channel': info['channel'],
+        'sentTo': info['sent_to'],
         'phone': info['phone'],
+        'altChannel': info['alt_channel'],
         'expiresIn': info['expires_in'],
         'resendIn': info['resend_in'],
     })
@@ -1238,8 +1245,12 @@ class AdminStatsView(APIView):
     def get(self, request):
         from django.db.models import Sum, Count
 
+        # Total is the raw table so an admin can see rows the app hides;
+        # "verified" is the same gate students are served through, which
+        # excludes demo fixtures as well as curated fallbacks. Counting
+        # origin='seeded' as verified overstated the real catalogue.
         total_scholarships = Scholarship.objects.count()
-        verified_scholarships = Scholarship.objects.exclude(origin='curated').count()
+        verified_scholarships = Scholarship.objects.verifiable().count()
         active_applicants = User.objects.filter(applications__isnull=False).distinct().count()
         registered_users = User.objects.count()
         total_applications = Application.objects.count()

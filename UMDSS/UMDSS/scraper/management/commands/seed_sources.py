@@ -70,12 +70,26 @@ API_SOURCES = [
     },
 ]
 
+# Static / server-rendered Ghana sources that need no browser, so they run in
+# the daily job like the API feeds. scholarships.gov.gh is the official
+# government portal and the most authoritative source of genuinely local awards;
+# its detail pages are plain HTML, mined through the same extractors as
+# everything else.
+ACTIVE_GENERIC_SOURCES = [
+    {
+        'name': 'Ghana Scholarships Authority',
+        'url': 'https://scholarships.gov.gh/opportunities',
+        'provider': 'Government',
+    },
+]
+
 # Ghana-specific providers whose sites are JS-heavy / browser-only and can't be
 # scraped on the deployment. Kept as inactive rows for visibility; their
 # scholarships come from the curated baseline instead.
 INACTIVE_SOURCES = [
+    # scholarships.gov.gh itself moved to ACTIVE_GENERIC_SOURCES above, its
+    # detail pages are plain HTML and need no browser.
     {'name': 'GETFund', 'url': 'https://getfund.gov.gh', 'type': 'selenium', 'provider': 'Government'},
-    {'name': 'Ghana Scholarships Secretariat', 'url': 'https://scholarships.gov.gh/', 'type': 'selenium', 'provider': 'Government'},
     {'name': 'MTN Ghana Foundation', 'url': 'https://mtn.com.gh/foundation', 'type': 'selenium', 'provider': 'Corporate'},
     {'name': 'Mastercard Foundation', 'url': 'https://mastercardfdn.org/scholars', 'type': 'playwright', 'provider': 'Foundation'},
     {'name': 'Chevening Scholarships', 'url': 'https://www.chevening.org/scholarship/ghana/', 'type': 'playwright', 'provider': 'International'},
@@ -105,6 +119,22 @@ class Command(BaseCommand):
                 },
             )
             self.stdout.write(self.style.SUCCESS(f"Active API source: {s['name']}"))
+
+        for s in ACTIVE_GENERIC_SOURCES:
+            ScrapingSource.objects.update_or_create(
+                name=s['name'],
+                defaults={
+                    'url': s['url'],
+                    'scraper_type': 'generic',
+                    'provider_type': s['provider'],
+                    'is_active': True,
+                    'consecutive_failures': 0,
+                    'cooldown_hours': 20,
+                    'min_delay': 2.0,
+                    'max_delay': 4.0,
+                },
+            )
+            self.stdout.write(self.style.SUCCESS(f"Active generic source: {s['name']}"))
 
         for s in INACTIVE_SOURCES:
             ScrapingSource.objects.update_or_create(

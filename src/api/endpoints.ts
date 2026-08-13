@@ -25,11 +25,17 @@ export const api = {
     updateMe: (data: any) => client.put('/auth/me/', data),
     changePassword: (data: { current_password: string; new_password: string }) =>
       client.post('/auth/password/', data),
-    // Text (or email, as fallback) a one-time code to the student's phone.
-    requestPhoneOtp: (phone?: string) =>
-      client.post('/auth/phone/otp/', phone ? { phone } : {}) as Promise<{
+    // Send a one-time code to confirm the student's phone number. It goes by
+    // email unless `channel: 'sms'` asks otherwise: see core/otp.py, the SMS
+    // sender ID is still waiting on the NCA. `sentTo` is masked and always
+    // belongs to `channel`, so it is safe to print next to the channel name.
+    // `altChannel` is the other route, or null when there is nothing to send to.
+    requestPhoneOtp: (opts: { phone?: string; channel?: 'sms' | 'email' } = {}) =>
+      client.post('/auth/phone/otp/', opts) as Promise<{
         channel: 'SMS' | 'Email'
+        sentTo: string
         phone: string
+        altChannel: 'SMS' | 'Email' | null
         expiresIn: number
         resendIn: number
       }>,

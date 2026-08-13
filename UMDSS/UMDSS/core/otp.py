@@ -12,10 +12,13 @@ Three rules keep a six digit code safe enough to type on a phone:
 * sends are rate limited per student, which bounds both the spend and the
   nuisance value of pointing the endpoint at someone else's handset.
 
-Delivery falls back to email when the SMS gateway will not take the message.
-An alphanumeric sender ID has to be approved by the networks before Arkesel
-will carry it, and until that lands SMS simply fails; a student should still be
-able to finish verifying rather than being stuck behind a regulatory queue.
+Email carries the code, SMS is the second choice. That looks backwards for a
+phone verification, and it is: Arkesel will not carry an alphanumeric sender ID
+until the NCA approves it, so every text currently fails. Leading with SMS
+meant every student waited on a send that was never going to arrive and then
+read that we had emailed a code to their phone number. Email is offered first
+because it is the channel that actually delivers; SMS stays one click away, and
+becomes the sane default the day the sender ID clears.
 """
 
 import logging
@@ -30,6 +33,13 @@ from .sms.backends import get_backend as get_sms_backend
 from .sms.phone import to_e164
 
 logger = logging.getLogger(__name__)
+
+CHANNEL_SMS = 'SMS'
+CHANNEL_EMAIL = 'Email'
+# See the module docstring: email leads only because SMS cannot deliver yet.
+# Flip this to CHANNEL_SMS once the Arkesel sender ID clears the NCA, and the
+# whole flow follows, including which option the screen offers second.
+PRIMARY_CHANNEL = CHANNEL_EMAIL
 
 CODE_DIGITS = 6
 CODE_TTL = timedelta(minutes=10)
@@ -72,8 +82,8 @@ def _send_sms(number, code):
 
 
 def _send_email(user, code):
-    """Fallback channel. Deliberately bypasses the email opt-in: this is a
-    security code the student asked for seconds ago, not a notification."""
+    """Deliberately bypasses the email opt-in: this is a security code the
+    student asked for seconds ago, not a notification."""
     address = (user.email or '').strip()
     if not address:
         return False
@@ -97,11 +107,55 @@ def _send_email(user, code):
         return False
 
 
-def request_code(user, raw_phone):
+def _destination(user, channel, number):
+    """Where a code sent on ``channel`` would land, or '' if it has nowhere."""
+    if channel == CHANNEL_EMAIL:
+        return (user.email or '').strip()
+    return number
+
+
+def _mask(channel, destination):
+    """Enough of the destination to recognise, not enough to enumerate.
+
+    Masked per channel, because the screen prints this back verbatim: an
+    address that came from the email branch can never be announced as a phone
+    number, which is exactly the confusion this replaces.
+    """
+    if channel == CHANNEL_EMAIL:
+        local, at, domain = destination.partition('@')
+        if not at:
+            return destination
+        shown = local[:2] if len(local) > 3 else local[:1]
+        return f'{shown}{"*" * max(len(local) - len(shown), 3)}@{domain}'
+    if len(destination) > 4:
+        return destination[:-4] + '****'
+    return destination
+
+
+def _deliver(user, channel, number, code):
+    return _send_email(user, code) if channel == CHANNEL_EMAIL else _send_sms(number, code)
+
+
+def _preferred(channel):
+    """Normalise the student's pick. Anything unrecognised means 'no pick'."""
+    wanted = str(channel or '').strip().lower()
+    if wanted in ('sms', 'text'):
+        return CHANNEL_SMS
+    if wanted in ('email', 'mail'):
+        return CHANNEL_EMAIL
+    return PRIMARY_CHANNEL
+
+
+def request_code(user, raw_phone, channel=None):
     """Issue a code for ``raw_phone`` and deliver it.
 
-    Returns ``{'channel', 'phone', 'expires_in', 'resend_in'}``. Raises
-    :class:`OtpError` for anything the student needs to act on.
+    ``channel`` is the student's explicit pick, 'sms' or 'email'; without one
+    the code goes by :data:`PRIMARY_CHANNEL`. Either way the other channel is
+    tried if the first refuses, so a gateway outage strands nobody.
+
+    Returns ``{'channel', 'sent_to', 'phone', 'alt_channel', 'expires_in',
+    'resend_in'}``. ``sent_to`` is masked and always belongs to ``channel``.
+    Raises :class:`OtpError` for anything the student needs to act on.
     """
     number = to_e164(raw_phone)
     if not number:
@@ -128,28 +182,46 @@ def request_code(user, raw_phone):
 
     code = _generate_code()
 
-    # Retire any code still outstanding, so exactly one is live at a time and an
-    # older message cannot be replayed after a resend.
-    PhoneVerification.objects.filter(student=user, consumed_at__isnull=True).update(consumed_at=now)
+    wanted = _preferred(channel)
+    other = CHANNEL_SMS if wanted == CHANNEL_EMAIL else CHANNEL_EMAIL
 
-    channel = 'SMS' if _send_sms(number, code) else ('Email' if _send_email(user, code) else '')
-    if not channel:
+    sent_on = ''
+    for candidate in (wanted, other):
+        destination = _destination(user, candidate, number)
+        # No address on the account is not a failure worth reporting, it just
+        # means that channel is not a route for this student.
+        if destination and _deliver(user, candidate, number, code):
+            sent_on = candidate
+            break
+
+    if not sent_on:
         raise OtpError(
             'We could not send the code just now. Please try again in a moment.'
         )
+
+    # Retire any code still outstanding, so exactly one is live at a time and an
+    # older message cannot be replayed after a resend. Done only once the new
+    # code is away: a student switching channels should not lose the code
+    # already in their inbox to a send that then fails.
+    PhoneVerification.objects.filter(student=user, consumed_at__isnull=True).update(consumed_at=now)
 
     PhoneVerification.objects.create(
         student=user,
         phone=number,
         code_hash=make_password(code),
-        channel=channel,
+        channel=sent_on,
         expires_at=now + CODE_TTL,
     )
 
+    alt = CHANNEL_SMS if sent_on == CHANNEL_EMAIL else CHANNEL_EMAIL
     return {
-        'channel': channel,
-        # Masked: enough to confirm the right handset, not enough to enumerate.
-        'phone': number[:-4].rstrip() + '****' if len(number) > 4 else number,
+        'channel': sent_on,
+        'sent_to': _mask(sent_on, _destination(user, sent_on, number)),
+        # The number being verified, whichever channel carried the code.
+        'phone': _mask(CHANNEL_SMS, number),
+        # What the screen offers as the second way in, once the cooldown is up.
+        # None when the student has no address on that channel to send to.
+        'alt_channel': alt if _destination(user, alt, number) else None,
         'expires_in': int(CODE_TTL.total_seconds()),
         'resend_in': int(RESEND_COOLDOWN.total_seconds()),
     }

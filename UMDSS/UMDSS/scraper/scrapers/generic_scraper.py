@@ -1,5 +1,6 @@
 import logging
 import re
+from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
@@ -62,7 +63,9 @@ class GenericScraper(BaseScraper):
         session = self._create_session()
 
         try:
-            if 'africanscholarships' in name_lower or 'african scholarship' in name_lower:
+            if 'ghana scholarship' in name_lower or 'scholarships.gov' in name_lower:
+                return self._scrape_ghana_gov(session)
+            elif 'africanscholarships' in name_lower or 'african scholarship' in name_lower:
                 return self._scrape_source(session, **self.AFRICAN_SCHOLARSHIPS)
             elif 'opportunitydesk' in name_lower or 'opportunity desk' in name_lower:
                 return self._scrape_source(session, **self.OPPORTUNITY_DESK)
@@ -267,3 +270,76 @@ class GenericScraper(BaseScraper):
             raise
 
         return self._follow_details(session, scholarships)
+
+    # ──────────────────────────────────────────────────────────────
+    # Ghana Scholarships Authority (scholarships.gov.gh)
+    # ──────────────────────────────────────────────────────────────
+    # The official government portal, and the most authoritative source of
+    # genuinely local awards. Its listing cards link to /opportunities/<slug>
+    # detail pages but carry only a "Read notice" label and a date, so unlike
+    # the aggregators the title and every field must come from the detail page
+    # itself, not the listing card.
+    GSA_MAX_PAGES = 15
+
+    def _scrape_ghana_gov(self, session) -> list[dict]:
+        try:
+            resp = self._safe_get(session, self.source.url)
+        except Exception as e:
+            logger.warning(f"{self.source.name} listing failed: {e}")
+            return []
+
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        listing = self.source.url.rstrip('/')
+        urls, seen = [], set()
+        for a in soup.find_all('a', href=True):
+            full = urljoin(self.source.url, (a.get('href') or '').strip())
+            # Individual notices live at /opportunities/<slug>; the bare
+            # /opportunities index is the listing itself, not an award.
+            if not re.search(r'/opportunities/[^/?#]+$', full):
+                continue
+            if full.rstrip('/') == listing or full in seen:
+                continue
+            seen.add(full)
+            urls.append(full)
+
+        items = []
+        for url in urls[:self.GSA_MAX_PAGES]:
+            try:
+                detail = self._safe_get(session, url)
+            except Exception as e:
+                logger.warning(f"{self.source.name}: detail {url} failed: {e}")
+                continue
+            dsoup = BeautifulSoup(detail.text, 'html.parser')
+            name = self._clean_gov_title(dsoup)
+            # The relevance gate is the same one every source passes through; a
+            # notice whose title doesn't read like an award is skipped, never
+            # padded with a made-up name.
+            if not name or not is_relevant_title(name):
+                continue
+            item = {
+                'name': name,
+                'provider': 'Ghana Scholarships Authority',
+                'provider_type': 'Government',
+                'tags': ['Government', 'Ghana', 'National'],
+                'source_url': url,
+            }
+            merge_extracted(item, extract_from_html(detail.text))
+            items.append(item)
+        return items
+
+    @staticmethod
+    def _clean_gov_title(soup) -> str:
+        """The award's name from the detail page, without the site suffix."""
+        og = soup.find('meta', attrs={'property': 'og:title'})
+        raw = ''
+        if og and og.get('content'):
+            raw = og['content']
+        else:
+            h1 = soup.find('h1')
+            if h1:
+                raw = h1.get_text(' ', strip=True)
+        # og:title carries a trailing " - Ghana Scholarships Authority".
+        raw = re.sub(
+            r'\s*[-–|]\s*Ghana\s+Scholarships?\s+Authority\s*$', '', raw, flags=re.I
+        )
+        return re.sub(r'\s{2,}', ' ', raw).strip()

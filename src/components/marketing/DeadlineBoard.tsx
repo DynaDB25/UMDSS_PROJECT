@@ -28,7 +28,12 @@ function DaysLeft({ deadline }: { deadline: string | null }) {
 }
 
 export function DeadlineBoard() {
-  const { awards, total, live } = useOpenAwards()
+  const { awards, total } = useOpenAwards()
+
+  // No live rows means the catalogue is still loading or unreachable. The
+  // section is dropped entirely rather than filled with a stand-in: a board
+  // headed "Open right now" has to be answerable at the provider's own site.
+  if (!awards?.length) return null
 
   return (
     <section className="border-y border-band-rule bg-band">
@@ -41,9 +46,7 @@ export function DeadlineBoard() {
             </h2>
           </div>
           <p className="t-sm max-w-sm text-band-muted">
-            {live
-              ? `Read live from the catalogue${total ? `, ${total} awards` : ''}, refreshed daily by an automated scraper. Sign in to see which of these you actually qualify for.`
-              : 'A sample of the funders covered across Ghana and abroad.'}
+            {`Read live from the catalogue${total ? `, ${total} awards` : ''}, refreshed daily by an automated scraper. Sign in to see which of these you actually qualify for.`}
           </p>
         </div>
 

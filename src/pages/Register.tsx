@@ -16,8 +16,15 @@ import { Alert, Button, Checkbox, Field, Input } from '../components/ui'
  * later from Settings. An unverified number still receives alerts, so skipping
  * costs nothing today and simply leaves the number unconfirmed.
  */
+type OtpInfo = {
+  channel: 'SMS' | 'Email'
+  sentTo: string
+  phone: string
+  altChannel: 'SMS' | 'Email' | null
+}
+
 function PhoneVerify({ onDone }: { onDone: () => void }) {
-  const [info, setInfo] = useState<{ channel: string; phone: string } | null>(null)
+  const [info, setInfo] = useState<OtpInfo | null>(null)
   const [code, setCode] = useState('')
   const [sending, setSending] = useState(true)
   const [verifying, setVerifying] = useState(false)
@@ -25,13 +32,21 @@ function PhoneVerify({ onDone }: { onDone: () => void }) {
   const [resendIn, setResendIn] = useState(0)
   const sentOnce = useRef(false)
 
-  const send = useCallback(async () => {
+  // No argument resends on whatever channel the server leads with; passing one
+  // is the student taking the other route offered once the countdown is up.
+  const send = useCallback(async (channel?: 'sms' | 'email') => {
     setError('')
     setSending(true)
     try {
-      const res = await api.auth.requestPhoneOtp()
-      setInfo({ channel: res.channel, phone: res.phone })
+      const res = await api.auth.requestPhoneOtp(channel ? { channel } : {})
+      setInfo({
+        channel: res.channel,
+        sentTo: res.sentTo,
+        phone: res.phone,
+        altChannel: res.altChannel,
+      })
       setResendIn(res.resendIn || 60)
+      setCode('')
     } catch (e: any) {
       setError(e.message || 'We could not send a code right now. You can skip and verify later.')
     } finally {
@@ -71,10 +86,20 @@ function PhoneVerify({ onDone }: { onDone: () => void }) {
         <ShieldCheck className="h-6 w-6" />
       </div>
       <h1 className="t-h1 mt-5 text-ink">Verify your phone</h1>
+      {/* sentTo is masked server-side to match the channel the code actually
+          went out on, so this can never name the wrong kind of destination.
+          The number is called out separately: it is what is being verified,
+          whichever channel carried the code there. */}
       <p className="t-body mt-3 text-ink-muted">
-        {info
-          ? `We sent a 6 digit code by ${info.channel === 'Email' ? 'email' : 'SMS'} to ${info.phone}. Enter it below to confirm this is you.`
-          : 'Sending a 6 digit code to the number you entered.'}
+        {info ? (
+          <>
+            We {info.channel === 'Email' ? 'emailed' : 'texted'} a 6 digit code to{' '}
+            <span className="font-semibold text-ink">{info.sentTo}</span>. Enter it below to
+            confirm {info.phone} is your number.
+          </>
+        ) : (
+          'Sending you a 6 digit code.'
+        )}
       </p>
 
       {error && (
@@ -115,7 +140,7 @@ function PhoneVerify({ onDone }: { onDone: () => void }) {
       <div className="mt-6 flex items-center justify-between">
         <button
           type="button"
-          onClick={send}
+          onClick={() => send()}
           disabled={sending || resendIn > 0}
           className="inline-flex items-center gap-2 text-sm font-semibold text-ink underline underline-offset-4 hover:text-accent disabled:cursor-not-allowed disabled:text-ink-faint disabled:no-underline"
         >
@@ -130,6 +155,33 @@ function PhoneVerify({ onDone }: { onDone: () => void }) {
           Skip for now
         </button>
       </div>
+
+      {/* The other route, held back until the resend cooldown is up. Offering
+          it immediately would just be two buttons racing the same 60 seconds,
+          and every send costs either credits or a slot in the hourly cap. */}
+      {info?.altChannel && resendIn === 0 && (
+        <p className="t-xs mt-4 text-ink-muted">
+          Still nothing?{' '}
+          <button
+            type="button"
+            onClick={() => send(info.altChannel === 'SMS' ? 'sms' : 'email')}
+            disabled={sending}
+            className="inline-flex items-center gap-1.5 font-semibold text-ink underline underline-offset-4 hover:text-accent disabled:cursor-not-allowed disabled:text-ink-faint disabled:no-underline"
+          >
+            {info.altChannel === 'SMS' ? (
+              <>
+                <Phone className="h-3 w-3" />
+                Send it by SMS instead
+              </>
+            ) : (
+              <>
+                <Mail className="h-3 w-3" />
+                Send it by email instead
+              </>
+            )}
+          </button>
+        </p>
+      )}
     </div>
   )
 }

@@ -414,8 +414,8 @@ class PhoneVerification(models.Model):
     # E.164, the same normalised form the SMS layer sends to.
     phone = models.CharField(max_length=20)
     code_hash = models.CharField(max_length=128)
-    # Where the code actually went. SMS can fall back to email while an
-    # alphanumeric sender ID is still awaiting network approval.
+    # Where the code actually went. Email leads while the alphanumeric sender
+    # ID is still awaiting network approval; see core.otp.PRIMARY_CHANNEL.
     channel = models.CharField(max_length=10, choices=CHANNELS, default='SMS')
     attempts = models.PositiveSmallIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)

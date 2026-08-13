@@ -105,7 +105,7 @@ function SiteHeader() {
  * argument that a real record is more persuasive than a drawing of one.
  */
 function ClosingSoon() {
-  const { awards, live } = useOpenAwards()
+  const { awards, live, status } = useOpenAwards()
 
   return (
     <div className="rounded-md border border-rule bg-surface">
@@ -119,8 +119,18 @@ function ClosingSoon() {
         )}
       </div>
 
+      {!awards?.length && (
+        // Honest empty state rather than a stand-in award. This panel sits in
+        // the hero column, so it holds its shape instead of disappearing.
+        <p className="t-sm px-4 py-6 text-ink-muted">
+          {status === 'loading' && 'Reading the live catalogue…'}
+          {status === 'failed' && 'The catalogue is unreachable right now. Nothing is shown rather than a stand-in.'}
+          {status === 'ready' && 'Nothing is open at this moment. The catalogue is rechecked every day.'}
+        </p>
+      )}
+
       <ul className="rule-list">
-        {awards.slice(0, 3).map((s) => {
+        {(awards ?? []).slice(0, 3).map((s) => {
           const d = daysUntil(s.deadline)
           const known = Number.isFinite(d)
           return (
