@@ -26,6 +26,11 @@ export type OpenAwardsStatus = 'loading' | 'ready' | 'failed'
 export function useOpenAwards() {
   const [awards, setAwards] = useState<OpenAward[] | null>(null)
   const [total, setTotal] = useState<number | null>(null)
+  // Read off the catalogue rather than written down. The hand-written strip
+  // this replaces named eleven funders, of which the catalogue contained
+  // exactly none: their scrapers are inactive and their curated rows were
+  // purged, so the page was advertising coverage that did not exist.
+  const [providers, setProviders] = useState<string[]>([])
   // Kept apart from `awards` so a failure cannot be reported as "still
   // loading", which is its own small untruth on a page about not inventing
   // things. Loading and failed differ to the reader even though both show
@@ -40,6 +45,17 @@ export function useOpenAwards() {
         if (!active) return
         setTotal(all.length)
         setStatus('ready')
+
+        const counts = new Map<string, number>()
+        for (const s of all) {
+          const name = (s.provider ?? '').trim()
+          if (name) counts.set(name, (counts.get(name) ?? 0) + 1)
+        }
+        setProviders(
+          [...counts.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .map(([name]) => name),
+        )
         // Only awards still genuinely open belong under a heading that says
         // so. Topping the list up with closed or undated rows to reach a
         // fuller looking board would misrepresent every one it added.
@@ -58,5 +74,5 @@ export function useOpenAwards() {
     }
   }, [])
 
-  return { awards, total, status, live: status === 'ready' }
+  return { awards, total, providers, status, live: status === 'ready' }
 }

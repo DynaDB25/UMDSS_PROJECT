@@ -4,10 +4,6 @@ import { cn } from '../../lib/cn'
 import { ButtonLink } from '../ui'
 import { useOpenAwards, type OpenAward } from './useOpenAwards'
 
-const FUNDERS =
-  'GETFund · MTN Ghana Foundation · Mastercard Foundation · Chevening · DAAD · Commonwealth · ' +
-  'Stanbic Bank · UNESCO · British Council · World Bank · Scholarship Secretariat'
-
 /** Days-remaining chip. Gold only when it is genuinely urgent. */
 function DaysLeft({ deadline }: { deadline: string | null }) {
   const d = daysUntil(deadline)
@@ -28,7 +24,7 @@ function DaysLeft({ deadline }: { deadline: string | null }) {
 }
 
 export function DeadlineBoard() {
-  const { awards, total } = useOpenAwards()
+  const { awards, total, providers } = useOpenAwards()
 
   // No live rows means the catalogue is still loading or unreachable. The
   // section is dropped entirely rather than filled with a stand-in: a board
@@ -80,7 +76,12 @@ export function DeadlineBoard() {
         </ul>
 
         <div className="mt-8 flex flex-wrap items-center justify-between gap-6">
-          <p className="t-xs max-w-2xl leading-relaxed text-band-muted">{FUNDERS}</p>
+          {/* Where these awards were actually published, counted off the same
+              response that fills the board, so the claim and the rows can
+              never disagree. */}
+          <p className="t-xs max-w-2xl leading-relaxed text-band-muted">
+            {providers.length > 0 && `Sourced from ${providers.join(' · ')}`}
+          </p>
           <ButtonLink
             to="/register"
             variant="onBand"

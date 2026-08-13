@@ -22,9 +22,12 @@ const modules = [
     desc: 'Ghana Card, transcripts, admission letter. Encrypted with AES-256 at rest and attached automatically to any application that asks for them, instead of five separate portals.',
   },
   {
-    title: 'SMS notifications',
+    title: 'Deadline alerts',
     lead: 'Built for the districts.',
-    desc: 'Deadline, status and interview alerts through the Hubtel gateway, tied to the Ghanaian academic calendar. Email open rates are a fraction of SMS, and a missed alert costs a year.',
+    // Named the wrong vendor (Hubtel; it is Arkesel) and promised a channel
+    // that has never delivered a message: Arkesel will not carry the sender ID
+    // until the NCA approves it, so email is what actually reaches students.
+    desc: 'Deadline, status and interview alerts tied to the Ghanaian academic calendar. Email carries them today, with SMS through Arkesel joining it once the sender ID clears the NCA. A missed alert costs a year.',
   },
   {
     title: 'Decision bot',
@@ -37,7 +40,7 @@ const steps = [
   { n: '01', title: 'Build your profile', desc: 'WASSCE aggregate, programme and home region, entered once.' },
   { n: '02', title: 'Get ranked matches', desc: 'A ranked list of awards you qualify for, with the reasoning shown.' },
   { n: '03', title: 'Apply from one vault', desc: 'Stored documents attach to any application in seconds.' },
-  { n: '04', title: 'Never miss a close', desc: 'SMS before every deadline, status change and interview.' },
+  { n: '04', title: 'Never miss a close', desc: 'An alert before every deadline, status change and interview.' },
 ]
 
 const coverage = [
@@ -206,7 +209,7 @@ export default function Landing() {
                 className="t-body-lg mt-8 max-w-prose text-ink-secondary"
               >
                 ScholarCircle matches you to awards you actually qualify for, keeps your Ghana Card,
-                transcripts and admission letter in one encrypted vault, and sends an SMS before
+                transcripts and admission letter in one encrypted vault, and alerts you before
                 every deadline closes. Every match shows the rule it passed, so eligibility is never
                 a guess.
               </motion.p>
