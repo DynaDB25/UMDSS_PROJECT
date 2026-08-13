@@ -1,5 +1,8 @@
 from rest_framework import generics, permissions, status, viewsets
-from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.decorators import (
+    api_view, permission_classes, action, renderer_classes,
+)
+from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -944,6 +947,39 @@ def _sse_response(generator):
     return response
 
 
+class EventStreamRenderer(BaseRenderer):
+    """Lets DRF's content negotiation accept ``Accept: text/event-stream``.
+
+    Negotiation runs before the view body, and DRF ships only JSON and browsable
+    renderers, so a client asking for SSE with the correct header was rejected
+    with 406 "Could not satisfy the request Accept header" and never reached the
+    stream at all. The browser escaped this by accident: fetch() sends
+    ``Accept: */*`` when no header is given, which matches JSONRenderer, so the
+    web chat worked while the mobile client, which asks for the media type it
+    actually wants, could not use the endpoint.
+
+    The view returns a StreamingHttpResponse directly, so this normally renders
+    nothing. It still encodes dicts as JSON, because the validation errors on
+    this endpoint are ordinary DRF Responses and have to stay readable when this
+    is the negotiated renderer.
+    """
+
+    media_type = 'text/event-stream'
+    format = 'sse'
+    charset = None
+    render_style = 'binary'
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        if data is None:
+            return b''
+        if isinstance(data, bytes):
+            return data
+        if isinstance(data, str):
+            return data.encode('utf-8')
+        import json as _json
+        return _json.dumps(data).encode('utf-8')
+
+
 class _ProviderError(Exception):
     """A provider call failed in a way that should trigger fallback."""
 
@@ -1187,6 +1223,10 @@ _STREAM_HOLDBACK = 4
 
 
 @api_view(['POST'])
+# JSON stays first so it remains the default for clients that send no Accept
+# header; the SSE renderer is what stops a correct `Accept: text/event-stream`
+# from being turned away with a 406 before the view runs.
+@renderer_classes([JSONRenderer, EventStreamRenderer])
 @permission_classes([permissions.IsAuthenticated])
 def assistant_stream(request):
     """POST /api/assistant/stream/ → the same grounded reply, streamed as SSE:
